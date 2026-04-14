@@ -75,6 +75,11 @@ class MeshModule
      */
     static void callModules(meshtastic_MeshPacket &mp, RxSource src = RX_SRC_RADIO);
 
+    /**
+     * For use only by MeshService, works same as above, just in the sending chain
+     */
+    static void callModulesOnSend(meshtastic_MeshPacket &mp);
+
     static std::vector<MeshModule *> GetMeshModulesWithUIFrames(int startIndex);
     static void observeUIEvents(Observer<const UIFrameEvent *> *observer);
     static AdminMessageHandleResult handleAdminMessageForAllModules(const meshtastic_MeshPacket &mp,
@@ -104,6 +109,9 @@ class MeshModule
 
     /* We allow modules to ignore a request without sending an error if they have a specific reason for it. */
     bool ignoreRequest = false;
+
+    /* For modules needing to alter packets that will be sent */
+    bool allowPreprocessing = false;
 
     /** If a bound channel name is set, we will only accept received packets that come in on that channel.
      * A special exception (FIXME, not sure if this is a good idea) - packets that arrive on the local interface
@@ -144,6 +152,14 @@ class MeshModule
      */
     virtual bool wantPacket(const meshtastic_MeshPacket *p) = 0;
 
+    /**
+     * Same as the normal wantPacket function, just specific for preprocessing
+     * Defaults to false, necessary for not changing existing modules
+     * @return true if you want to process the specific portnum
+     */
+
+    virtual bool wantPacketToSend(const meshtastic_MeshPacket *p) { return false; };
+
     /** Called to handle a particular incoming message
 
     @return ProcessMessage::STOP if you've guaranteed you've handled this message and no other handlers should be considered for
@@ -155,6 +171,13 @@ class MeshModule
         This allows the module to change the message before it is passed through the rest of the call-chain.
     */
     virtual void alterReceived(meshtastic_MeshPacket &mp) {}
+
+    /**
+     * Called to change outgoing packet, this allows the module to alter a packet before sending.
+     * Useful for e.g. custom cryptography
+     */
+
+    virtual void alterToSend(meshtastic_MeshPacket &mp) {}
 
     /** Messages can be received that have the want_response bit set.  If set, this callback will be invoked
      * so that subclasses can (optionally) send a response back to the original sender.
