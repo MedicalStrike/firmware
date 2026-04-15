@@ -219,7 +219,7 @@ void MeshModule::callModulesOnSend(meshtastic_MeshPacket &mp)
 
         /// We only call modules that are interested in the packet and if it is originating from us
         /// We don't want to work with already encrypted packages
-        bool wantsPacket = isDecoded && isFromUs(&mp) && pi.wantPacket(&mp);
+        bool wantsPacket = isDecoded && isFromUs(&mp) && pi.wantPacketToSend(&mp);
 
         if (wantsPacket) {
             LOG_DEBUG("Pre-process module '%s' wantsPacket=%d", pi.name, wantsPacket);
@@ -227,7 +227,7 @@ void MeshModule::callModulesOnSend(meshtastic_MeshPacket &mp)
             moduleFound = true;
 
             /// No bound channel logic, since all packages are from us and therefore trusted
-            pi.alterReceived(mp);
+            pi.alterToSend(mp);
             LOG_DEBUG("Pre-process module '%s' considered", pi.name);
         }
 

@@ -354,6 +354,7 @@ ErrorCode Router::send(meshtastic_MeshPacket *p)
         DEBUG_HEAP_AFTER("Router::send", p_decoded);
 
         // Enable pre-processing for e.g. custom cryptography
+        LOG_DEBUG("Attempting to call modules on send");
         MeshModule::callModulesOnSend(*p);
         // perhapsDecode() checks for encryption again, so no problem here with previous module encryption
         auto encodeResult = perhapsEncode(p);
