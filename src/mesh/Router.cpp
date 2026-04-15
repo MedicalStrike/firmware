@@ -353,6 +353,9 @@ ErrorCode Router::send(meshtastic_MeshPacket *p)
         meshtastic_MeshPacket *p_decoded = packetPool.allocCopy(*p);
         DEBUG_HEAP_AFTER("Router::send", p_decoded);
 
+        // Enable pre-processing for e.g. custom cryptography
+        MeshModule::callModulesOnSend(*p);
+        // perhapsDecode() checks for encryption again, so no problem here with previous module encryption
         auto encodeResult = perhapsEncode(p);
         if (encodeResult != meshtastic_Routing_Error_NONE) {
             packetPool.release(p_decoded);

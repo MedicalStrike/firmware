@@ -204,6 +204,41 @@ void MeshModule::callModules(meshtastic_MeshPacket &mp, RxSource src)
     }
 }
 
+void MeshModule::callModulesOnSend(meshtastic_MeshPacket &mp)
+{
+
+    // LOG_DEBUG("In call modules");
+    bool moduleFound = false;
+
+    bool isDecoded = mp.which_payload_variant == meshtastic_MeshPacket_decoded_tag;
+
+    for (auto i = modules->begin(); i != modules->end(); ++i) {
+        auto &pi = **i;
+
+        pi.currentRequest = &mp;
+
+        /// We only call modules that are interested in the packet and if it is originating from us
+        /// We don't want to work with already encrypted packages
+        bool wantsPacket = isDecoded && isFromUs(&mp) && pi.wantPacket(&mp);
+
+        if (wantsPacket) {
+            LOG_DEBUG("Pre-process module '%s' wantsPacket=%d", pi.name, wantsPacket);
+
+            moduleFound = true;
+
+            /// No bound channel logic, since all packages are from us and therefore trusted
+            pi.alterReceived(mp);
+            LOG_DEBUG("Pre-process module '%s' considered", pi.name);
+        }
+
+        pi.currentRequest = NULL;
+    }
+
+    if (!moduleFound && isDecoded) {
+        LOG_DEBUG("No modules interested in portnum=%d, src=%s", mp.decoded.portnum, (isFromUs(&mp)) ? "LOCAL" : "REMOTE");
+    }
+}
+
 meshtastic_MeshPacket *MeshModule::allocReply()
 {
     auto r = myReply;
