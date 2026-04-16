@@ -544,7 +544,7 @@ extern const pb_msgdesc_t meshtastic_KeyVerificationAdmin_msg;
 #define meshtastic_HamParameters_size            31
 #define meshtastic_KeyVerificationAdmin_size     25
 #define meshtastic_NodeRemoteHardwarePinsResponse_size 496
-#define meshtastic_SharedContact_size            127
+#define meshtastic_SharedContact_size            162
 
 #ifdef __cplusplus
 } /* extern "C" */
