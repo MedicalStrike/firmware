@@ -51,6 +51,8 @@ class CryptoEngine
     virtual void aesEncrypt(uint8_t *in, uint8_t *out);
     AESSmall256 *aes = NULL;
 
+    bool xeddsa_sign(uint8_t *message, size_t len, uint8_t *signature);
+    bool xeddsa_verify(uint8_t *pubKey, uint8_t *message, size_t len, uint8_t *signature);
 #endif
 
     /**
