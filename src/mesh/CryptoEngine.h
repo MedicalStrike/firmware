@@ -82,6 +82,9 @@ class CryptoEngine
 #if !(MESHTASTIC_EXCLUDE_PKI)
     uint8_t shared_key[32] = {0};
     uint8_t private_key[32] = {0};
+    uint8_t xeddsa_public_key[32] = {0};
+    uint8_t xeddsa_private_key[32] = {0};
+    void curve_to_ed_pub(uint8_t *curve_pubkey, uint8_t *ed_pubkey);
 #endif
     /**
      * Init our 128 bit nonce for a new packet
