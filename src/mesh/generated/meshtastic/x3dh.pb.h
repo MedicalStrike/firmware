@@ -19,7 +19,7 @@ typedef enum _meshtastic_X3DHMessageType {
     meshtastic_X3DHMessageType_EXTERNAL_BUNDLE = 3,
     /* Initial message containing shared secrets */
     meshtastic_X3DHMessageType_INITIAL_MESSAGE = 4,
-    /* Confirming Message to acceptance of shared secrets with follow-up protocol */
+    /* Confirming Message to acceptance of shared secrets with follow-up protocol or protocol upgrade */
     meshtastic_X3DHMessageType_PROTOCOL_SWITCH = 5,
     /* Storage request for pre-keys to external server */
     meshtastic_X3DHMessageType_STORE_BUNDLE = 6,
@@ -34,20 +34,20 @@ typedef enum _meshtastic_X3DHMessageType {
 /* Used for determining the post-X3DH-Protocol.
  Evaluated when PROTOCOL_SWITCH is set or used for announcing capabilities in INITIAL_MESSAGE */
 typedef enum _meshtastic_X3DHProtocol {
-    /* Direct Ecliptic Diffie-Hellman like it is used at the moment, defeats the purpose of X3DH */
-    meshtastic_X3DHProtocol_DIRECT = 0,
     /* More secure than direct ECDH, but still not recommend by the X3DH documentation */
-    meshtastic_X3DHProtocol_X3DH_SECRET = 1,
+    meshtastic_X3DHProtocol_X3DH_SECRET = 0,
     /* Secure with forward secrecy, but needs additional modules and changes to the base system */
-    meshtastic_X3DHProtocol_DOUBLE_RATCHET = 3
+    meshtastic_X3DHProtocol_DOUBLE_RATCHET = 1
 } meshtastic_X3DHProtocol;
 
 /* Struct definitions */
+typedef PB_BYTES_ARRAY_T(210) meshtastic_X3DHMessage_payload_t;
 typedef struct _meshtastic_X3DHMessage {
     meshtastic_X3DHMessageType type;
     meshtastic_X3DHProtocol continue_protocol;
     /* Contains one of the payloads specified by x3dh_payload.pb */
-    pb_callback_t payload;
+    bool has_payload;
+    meshtastic_X3DHMessage_payload_t payload;
 } meshtastic_X3DHMessage;
 
 
@@ -60,7 +60,7 @@ extern "C" {
 #define _meshtastic_X3DHMessageType_MAX meshtastic_X3DHMessageType_X3DH_ERROR
 #define _meshtastic_X3DHMessageType_ARRAYSIZE ((meshtastic_X3DHMessageType)(meshtastic_X3DHMessageType_X3DH_ERROR+1))
 
-#define _meshtastic_X3DHProtocol_MIN meshtastic_X3DHProtocol_DIRECT
+#define _meshtastic_X3DHProtocol_MIN meshtastic_X3DHProtocol_X3DH_SECRET
 #define _meshtastic_X3DHProtocol_MAX meshtastic_X3DHProtocol_DOUBLE_RATCHET
 #define _meshtastic_X3DHProtocol_ARRAYSIZE ((meshtastic_X3DHProtocol)(meshtastic_X3DHProtocol_DOUBLE_RATCHET+1))
 
@@ -69,8 +69,8 @@ extern "C" {
 
 
 /* Initializer values for message structs */
-#define meshtastic_X3DHMessage_init_default      {_meshtastic_X3DHMessageType_MIN, _meshtastic_X3DHProtocol_MIN, {{NULL}, NULL}}
-#define meshtastic_X3DHMessage_init_zero         {_meshtastic_X3DHMessageType_MIN, _meshtastic_X3DHProtocol_MIN, {{NULL}, NULL}}
+#define meshtastic_X3DHMessage_init_default      {_meshtastic_X3DHMessageType_MIN, _meshtastic_X3DHProtocol_MIN, false, {0, {0}}}
+#define meshtastic_X3DHMessage_init_zero         {_meshtastic_X3DHMessageType_MIN, _meshtastic_X3DHProtocol_MIN, false, {0, {0}}}
 
 /* Field tags (for use in manual encoding/decoding) */
 #define meshtastic_X3DHMessage_type_tag          1
@@ -81,8 +81,8 @@ extern "C" {
 #define meshtastic_X3DHMessage_FIELDLIST(X, a) \
 X(a, STATIC,   SINGULAR, UENUM,    type,              1) \
 X(a, STATIC,   SINGULAR, UENUM,    continue_protocol,   2) \
-X(a, CALLBACK, OPTIONAL, BYTES,    payload,           3)
-#define meshtastic_X3DHMessage_CALLBACK pb_default_field_callback
+X(a, STATIC,   OPTIONAL, BYTES,    payload,           3)
+#define meshtastic_X3DHMessage_CALLBACK NULL
 #define meshtastic_X3DHMessage_DEFAULT NULL
 
 extern const pb_msgdesc_t meshtastic_X3DHMessage_msg;
@@ -91,7 +91,8 @@ extern const pb_msgdesc_t meshtastic_X3DHMessage_msg;
 #define meshtastic_X3DHMessage_fields &meshtastic_X3DHMessage_msg
 
 /* Maximum encoded size of messages (where known) */
-/* meshtastic_X3DHMessage_size depends on runtime parameters */
+#define MESHTASTIC_MESHTASTIC_X3DH_PB_H_MAX_SIZE meshtastic_X3DHMessage_size
+#define meshtastic_X3DHMessage_size              217
 
 #ifdef __cplusplus
 } /* extern "C" */

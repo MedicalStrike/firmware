@@ -12,7 +12,7 @@ PB_BIND(meshtastic_PositionLite, meshtastic_PositionLite, AUTO)
 PB_BIND(meshtastic_UserLite, meshtastic_UserLite, AUTO)
 
 
-PB_BIND(meshtastic_NodeInfoLite, meshtastic_NodeInfoLite, AUTO)
+PB_BIND(meshtastic_NodeInfoLite, meshtastic_NodeInfoLite, 2)
 
 
 PB_BIND(meshtastic_DeviceState, meshtastic_DeviceState, 2)
@@ -25,6 +25,8 @@ PB_BIND(meshtastic_ChannelFile, meshtastic_ChannelFile, 2)
 
 
 PB_BIND(meshtastic_BackupPreferences, meshtastic_BackupPreferences, 2)
+
+
 
 
 

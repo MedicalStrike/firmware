@@ -15,7 +15,7 @@ PB_BIND(meshtastic_PreKeyBundle, meshtastic_PreKeyBundle, 2)
 PB_BIND(meshtastic_OneTimePreKeyBundle, meshtastic_OneTimePreKeyBundle, AUTO)
 
 
-PB_BIND(meshtastic_ExternalBundle, meshtastic_ExternalBundle, AUTO)
+PB_BIND(meshtastic_RequestBundle, meshtastic_RequestBundle, AUTO)
 
 
 PB_BIND(meshtastic_InitialMessage, meshtastic_InitialMessage, AUTO)

@@ -15,6 +15,24 @@
 #error Regenerate this file with the current version of nanopb generator.
 #endif
 
+/* Enum definitions */
+/* Signals the current state of the X3DH-Agreement */
+typedef enum _meshtastic_X3DHState { /* X3DH-Agreement has not benn started */
+    meshtastic_X3DHState_X3DH_NOT_STARTED = 0,
+    /* Initial pre-key-bundle requested */
+    meshtastic_X3DHState_BUNDLE_REQUESTED = 1,
+    /* Initial pre-key-bundle sent */
+    meshtastic_X3DHState_BUNDLE_SENT = 2,
+    /* Bundle requested from external server */
+    meshtastic_X3DHState_EXTERNAL_BUNDLE_REQUESTED = 3,
+    /* Pre-key-bundle received */
+    meshtastic_X3DHState_BUNDLE_RECEIVED = 4,
+    /* Initial message sent */
+    meshtastic_X3DHState_INIT_SENT = 5,
+    /* Post-X3DH protocol set, end of X3DH-Agreement */
+    meshtastic_X3DHState_PROTOCOL_SET = 6
+} meshtastic_X3DHState;
+
 /* Struct definitions */
 /* Position with static location information only for NodeDBLite */
 typedef struct _meshtastic_PositionLite {
@@ -36,6 +54,7 @@ typedef struct _meshtastic_PositionLite {
 } meshtastic_PositionLite;
 
 typedef PB_BYTES_ARRAY_T(32) meshtastic_UserLite_public_key_t;
+typedef PB_BYTES_ARRAY_T(32) meshtastic_UserLite_x3dh_shared_key_t;
 typedef struct _meshtastic_UserLite {
     /* This is the addr of the radio. */
     pb_byte_t macaddr[6];
@@ -61,6 +80,13 @@ typedef struct _meshtastic_UserLite {
     /* Whether or not the node can be messaged */
     bool has_is_unmessagable;
     bool is_unmessagable;
+    /* The shared, 32-byte secret for direct messages, derived from X3DH
+ Not filled when not including the X3DH-module, therefore taking no storage and being reverse compatible */
+    bool has_x3dh_shared_key;
+    meshtastic_UserLite_x3dh_shared_key_t x3dh_shared_key;
+    /* The current state of the X3DH-agreement */
+    bool has_x3dh_state;
+    meshtastic_X3DHState x3dh_state;
 } meshtastic_UserLite;
 
 typedef struct _meshtastic_NodeInfoLite {
@@ -187,16 +213,33 @@ typedef struct _meshtastic_BackupPreferences {
 extern "C" {
 #endif
 
+/* Helper constants for enums */
+#define _meshtastic_X3DHState_MIN meshtastic_X3DHState_X3DH_NOT_STARTED
+#define _meshtastic_X3DHState_MAX meshtastic_X3DHState_PROTOCOL_SET
+#define _meshtastic_X3DHState_ARRAYSIZE ((meshtastic_X3DHState)(meshtastic_X3DHState_PROTOCOL_SET+1))
+
+#define meshtastic_PositionLite_location_source_ENUMTYPE meshtastic_Position_LocSource
+
+#define meshtastic_UserLite_hw_model_ENUMTYPE meshtastic_HardwareModel
+#define meshtastic_UserLite_role_ENUMTYPE meshtastic_Config_DeviceConfig_Role
+#define meshtastic_UserLite_x3dh_state_ENUMTYPE meshtastic_X3DHState
+
+
+
+
+
+
+
 /* Initializer values for message structs */
 #define meshtastic_PositionLite_init_default     {0, 0, 0, 0, _meshtastic_Position_LocSource_MIN}
-#define meshtastic_UserLite_init_default         {{0}, "", "", _meshtastic_HardwareModel_MIN, 0, _meshtastic_Config_DeviceConfig_Role_MIN, {0, {0}}, false, 0}
+#define meshtastic_UserLite_init_default         {{0}, "", "", _meshtastic_HardwareModel_MIN, 0, _meshtastic_Config_DeviceConfig_Role_MIN, {0, {0}}, false, 0, false, {0, {0}}, false, _meshtastic_X3DHState_MIN}
 #define meshtastic_NodeInfoLite_init_default     {0, false, meshtastic_UserLite_init_default, false, meshtastic_PositionLite_init_default, 0, 0, false, meshtastic_DeviceMetrics_init_default, 0, 0, false, 0, 0, 0, 0, 0}
 #define meshtastic_DeviceState_init_default      {false, meshtastic_MyNodeInfo_init_default, false, meshtastic_User_init_default, 0, {meshtastic_MeshPacket_init_default}, false, meshtastic_MeshPacket_init_default, 0, 0, 0, false, meshtastic_MeshPacket_init_default, 0, {meshtastic_NodeRemoteHardwarePin_init_default, meshtastic_NodeRemoteHardwarePin_init_default, meshtastic_NodeRemoteHardwarePin_init_default, meshtastic_NodeRemoteHardwarePin_init_default, meshtastic_NodeRemoteHardwarePin_init_default, meshtastic_NodeRemoteHardwarePin_init_default, meshtastic_NodeRemoteHardwarePin_init_default, meshtastic_NodeRemoteHardwarePin_init_default, meshtastic_NodeRemoteHardwarePin_init_default, meshtastic_NodeRemoteHardwarePin_init_default, meshtastic_NodeRemoteHardwarePin_init_default, meshtastic_NodeRemoteHardwarePin_init_default}}
 #define meshtastic_NodeDatabase_init_default     {0, {0}}
 #define meshtastic_ChannelFile_init_default      {0, {meshtastic_Channel_init_default, meshtastic_Channel_init_default, meshtastic_Channel_init_default, meshtastic_Channel_init_default, meshtastic_Channel_init_default, meshtastic_Channel_init_default, meshtastic_Channel_init_default, meshtastic_Channel_init_default}, 0}
 #define meshtastic_BackupPreferences_init_default {0, 0, false, meshtastic_LocalConfig_init_default, false, meshtastic_LocalModuleConfig_init_default, false, meshtastic_ChannelFile_init_default, false, meshtastic_User_init_default}
 #define meshtastic_PositionLite_init_zero        {0, 0, 0, 0, _meshtastic_Position_LocSource_MIN}
-#define meshtastic_UserLite_init_zero            {{0}, "", "", _meshtastic_HardwareModel_MIN, 0, _meshtastic_Config_DeviceConfig_Role_MIN, {0, {0}}, false, 0}
+#define meshtastic_UserLite_init_zero            {{0}, "", "", _meshtastic_HardwareModel_MIN, 0, _meshtastic_Config_DeviceConfig_Role_MIN, {0, {0}}, false, 0, false, {0, {0}}, false, _meshtastic_X3DHState_MIN}
 #define meshtastic_NodeInfoLite_init_zero        {0, false, meshtastic_UserLite_init_zero, false, meshtastic_PositionLite_init_zero, 0, 0, false, meshtastic_DeviceMetrics_init_zero, 0, 0, false, 0, 0, 0, 0, 0}
 #define meshtastic_DeviceState_init_zero         {false, meshtastic_MyNodeInfo_init_zero, false, meshtastic_User_init_zero, 0, {meshtastic_MeshPacket_init_zero}, false, meshtastic_MeshPacket_init_zero, 0, 0, 0, false, meshtastic_MeshPacket_init_zero, 0, {meshtastic_NodeRemoteHardwarePin_init_zero, meshtastic_NodeRemoteHardwarePin_init_zero, meshtastic_NodeRemoteHardwarePin_init_zero, meshtastic_NodeRemoteHardwarePin_init_zero, meshtastic_NodeRemoteHardwarePin_init_zero, meshtastic_NodeRemoteHardwarePin_init_zero, meshtastic_NodeRemoteHardwarePin_init_zero, meshtastic_NodeRemoteHardwarePin_init_zero, meshtastic_NodeRemoteHardwarePin_init_zero, meshtastic_NodeRemoteHardwarePin_init_zero, meshtastic_NodeRemoteHardwarePin_init_zero, meshtastic_NodeRemoteHardwarePin_init_zero}}
 #define meshtastic_NodeDatabase_init_zero        {0, {0}}
@@ -217,6 +260,8 @@ extern "C" {
 #define meshtastic_UserLite_role_tag             6
 #define meshtastic_UserLite_public_key_tag       7
 #define meshtastic_UserLite_is_unmessagable_tag  9
+#define meshtastic_UserLite_x3dh_shared_key_tag  10
+#define meshtastic_UserLite_x3dh_state_tag       11
 #define meshtastic_NodeInfoLite_num_tag          1
 #define meshtastic_NodeInfoLite_user_tag         2
 #define meshtastic_NodeInfoLite_position_tag     3
@@ -268,7 +313,9 @@ X(a, STATIC,   SINGULAR, UENUM,    hw_model,          4) \
 X(a, STATIC,   SINGULAR, BOOL,     is_licensed,       5) \
 X(a, STATIC,   SINGULAR, UENUM,    role,              6) \
 X(a, STATIC,   SINGULAR, BYTES,    public_key,        7) \
-X(a, STATIC,   OPTIONAL, BOOL,     is_unmessagable,   9)
+X(a, STATIC,   OPTIONAL, BOOL,     is_unmessagable,   9) \
+X(a, STATIC,   OPTIONAL, BYTES,    x3dh_shared_key,  10) \
+X(a, STATIC,   OPTIONAL, UENUM,    x3dh_state,       11)
 #define meshtastic_UserLite_CALLBACK NULL
 #define meshtastic_UserLite_DEFAULT NULL
 
@@ -360,12 +407,12 @@ extern const pb_msgdesc_t meshtastic_BackupPreferences_msg;
 /* Maximum encoded size of messages (where known) */
 /* meshtastic_NodeDatabase_size depends on runtime parameters */
 #define MESHTASTIC_MESHTASTIC_DEVICEONLY_PB_H_MAX_SIZE meshtastic_BackupPreferences_size
-#define meshtastic_BackupPreferences_size        2312
+#define meshtastic_BackupPreferences_size        2277
 #define meshtastic_ChannelFile_size              718
-#define meshtastic_DeviceState_size              1772
-#define meshtastic_NodeInfoLite_size             196
+#define meshtastic_DeviceState_size              1737
+#define meshtastic_NodeInfoLite_size             233
 #define meshtastic_PositionLite_size             28
-#define meshtastic_UserLite_size                 98
+#define meshtastic_UserLite_size                 134
 
 #ifdef __cplusplus
 } /* extern "C" */
