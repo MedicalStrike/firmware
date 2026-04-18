@@ -10,28 +10,11 @@
 #include "meshtastic/localonly.pb.h"
 #include "meshtastic/mesh.pb.h"
 #include "meshtastic/telemetry.pb.h"
+#include "meshtastic/x3dh.pb.h"
 
 #if PB_PROTO_HEADER_VERSION != 40
 #error Regenerate this file with the current version of nanopb generator.
 #endif
-
-/* Enum definitions */
-/* Signals the current state of the X3DH-Agreement */
-typedef enum _meshtastic_X3DHState { /* X3DH-Agreement has not benn started */
-    meshtastic_X3DHState_X3DH_NOT_STARTED = 0,
-    /* Initial pre-key-bundle requested */
-    meshtastic_X3DHState_BUNDLE_REQUESTED = 1,
-    /* Initial pre-key-bundle sent */
-    meshtastic_X3DHState_BUNDLE_SENT = 2,
-    /* Bundle requested from external server */
-    meshtastic_X3DHState_EXTERNAL_BUNDLE_REQUESTED = 3,
-    /* Pre-key-bundle received */
-    meshtastic_X3DHState_BUNDLE_RECEIVED = 4,
-    /* Initial message sent */
-    meshtastic_X3DHState_INIT_SENT = 5,
-    /* Post-X3DH protocol set, end of X3DH-Agreement */
-    meshtastic_X3DHState_PROTOCOL_SET = 6
-} meshtastic_X3DHState;
 
 /* Struct definitions */
 /* Position with static location information only for NodeDBLite */
@@ -212,23 +195,6 @@ typedef struct _meshtastic_BackupPreferences {
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/* Helper constants for enums */
-#define _meshtastic_X3DHState_MIN meshtastic_X3DHState_X3DH_NOT_STARTED
-#define _meshtastic_X3DHState_MAX meshtastic_X3DHState_PROTOCOL_SET
-#define _meshtastic_X3DHState_ARRAYSIZE ((meshtastic_X3DHState)(meshtastic_X3DHState_PROTOCOL_SET+1))
-
-#define meshtastic_PositionLite_location_source_ENUMTYPE meshtastic_Position_LocSource
-
-#define meshtastic_UserLite_hw_model_ENUMTYPE meshtastic_HardwareModel
-#define meshtastic_UserLite_role_ENUMTYPE meshtastic_Config_DeviceConfig_Role
-#define meshtastic_UserLite_x3dh_state_ENUMTYPE meshtastic_X3DHState
-
-
-
-
-
-
 
 /* Initializer values for message structs */
 #define meshtastic_PositionLite_init_default     {0, 0, 0, 0, _meshtastic_Position_LocSource_MIN}

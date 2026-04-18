@@ -28,5 +28,3 @@ PB_BIND(meshtastic_BackupPreferences, meshtastic_BackupPreferences, 2)
 
 
 
-
-

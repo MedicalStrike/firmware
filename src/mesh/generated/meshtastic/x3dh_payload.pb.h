@@ -13,6 +13,9 @@
 typedef struct _meshtastic_OneTimePreKey {
     /* Random, unique key-ID allowing matching of private and public key */
     uint32_t id;
+    /* Id of node this key was sent to */
+    bool has_node_num;
+    uint32_t node_num;
     /* 32-byte Ecliptic (X25519) key
  Public for device-to-device communication, private for on-device-storage */
     pb_byte_t key[32];
@@ -29,14 +32,12 @@ typedef struct _meshtastic_PreKeyBundle {
     /* 64 byte signature of the pre-key, signed by the identity key */
     pb_byte_t pre_key_signature[64];
     /* One or multiple Ecliptic (X25519) keys, only used once */
-    pb_size_t one_time_pre_keys_count;
-    meshtastic_OneTimePreKey one_time_pre_keys[10];
+    std::vector<meshtastic_OneTimePreKey> one_time_pre_keys;
 } meshtastic_PreKeyBundle;
 
 typedef struct _meshtastic_OneTimePreKeyBundle {
     /* Multiple one-time pre-keys, amount only limited by the available size per mesh packet */
-    pb_size_t one_time_pre_keys_count;
-    meshtastic_OneTimePreKey one_time_pre_keys[5];
+    std::vector<meshtastic_OneTimePreKey> one_time_pre_keys;
 } meshtastic_OneTimePreKeyBundle;
 
 typedef struct _meshtastic_RequestBundle {
@@ -46,6 +47,7 @@ typedef struct _meshtastic_RequestBundle {
     pb_byte_t public_key[32];
 } meshtastic_RequestBundle;
 
+typedef PB_BYTES_ARRAY_T(180) meshtastic_InitialMessage_initial_cyphertext_t;
 /* This payload contains no field for the public identity key of the sender, since it is saved as the public key in the mesh packet header */
 typedef struct _meshtastic_InitialMessage {
     /* Public, ephermal key used by the sending node for this X3DH */
@@ -53,7 +55,7 @@ typedef struct _meshtastic_InitialMessage {
     /* Unique id of the used one-time pre key, so the receiving node can use the correct matching private one */
     uint32_t otpk_id;
     /* Initial cyphertext containing e.g. further secrets for future protocol usage */
-    pb_callback_t initial_cyphertext;
+    meshtastic_InitialMessage_initial_cyphertext_t initial_cyphertext;
 } meshtastic_InitialMessage;
 
 
@@ -62,20 +64,21 @@ extern "C" {
 #endif
 
 /* Initializer values for message structs */
-#define meshtastic_OneTimePreKey_init_default    {0, {0}}
-#define meshtastic_PreKeyBundle_init_default     {false, 0, {0}, {0}, {0}, 0, {meshtastic_OneTimePreKey_init_default, meshtastic_OneTimePreKey_init_default, meshtastic_OneTimePreKey_init_default, meshtastic_OneTimePreKey_init_default, meshtastic_OneTimePreKey_init_default, meshtastic_OneTimePreKey_init_default, meshtastic_OneTimePreKey_init_default, meshtastic_OneTimePreKey_init_default, meshtastic_OneTimePreKey_init_default, meshtastic_OneTimePreKey_init_default}}
-#define meshtastic_OneTimePreKeyBundle_init_default {0, {meshtastic_OneTimePreKey_init_default, meshtastic_OneTimePreKey_init_default, meshtastic_OneTimePreKey_init_default, meshtastic_OneTimePreKey_init_default, meshtastic_OneTimePreKey_init_default}}
+#define meshtastic_OneTimePreKey_init_default    {0, false, 0, {0}}
+#define meshtastic_PreKeyBundle_init_default     {false, 0, {0}, {0}, {0}, {0}}
+#define meshtastic_OneTimePreKeyBundle_init_default {{0}}
 #define meshtastic_RequestBundle_init_default    {0, {0}}
-#define meshtastic_InitialMessage_init_default   {{0}, 0, {{NULL}, NULL}}
-#define meshtastic_OneTimePreKey_init_zero       {0, {0}}
-#define meshtastic_PreKeyBundle_init_zero        {false, 0, {0}, {0}, {0}, 0, {meshtastic_OneTimePreKey_init_zero, meshtastic_OneTimePreKey_init_zero, meshtastic_OneTimePreKey_init_zero, meshtastic_OneTimePreKey_init_zero, meshtastic_OneTimePreKey_init_zero, meshtastic_OneTimePreKey_init_zero, meshtastic_OneTimePreKey_init_zero, meshtastic_OneTimePreKey_init_zero, meshtastic_OneTimePreKey_init_zero, meshtastic_OneTimePreKey_init_zero}}
-#define meshtastic_OneTimePreKeyBundle_init_zero {0, {meshtastic_OneTimePreKey_init_zero, meshtastic_OneTimePreKey_init_zero, meshtastic_OneTimePreKey_init_zero, meshtastic_OneTimePreKey_init_zero, meshtastic_OneTimePreKey_init_zero}}
+#define meshtastic_InitialMessage_init_default   {{0}, 0, {0, {0}}}
+#define meshtastic_OneTimePreKey_init_zero       {0, false, 0, {0}}
+#define meshtastic_PreKeyBundle_init_zero        {false, 0, {0}, {0}, {0}, {0}}
+#define meshtastic_OneTimePreKeyBundle_init_zero {{0}}
 #define meshtastic_RequestBundle_init_zero       {0, {0}}
-#define meshtastic_InitialMessage_init_zero      {{0}, 0, {{NULL}, NULL}}
+#define meshtastic_InitialMessage_init_zero      {{0}, 0, {0, {0}}}
 
 /* Field tags (for use in manual encoding/decoding) */
 #define meshtastic_OneTimePreKey_id_tag          1
-#define meshtastic_OneTimePreKey_key_tag         2
+#define meshtastic_OneTimePreKey_node_num_tag    2
+#define meshtastic_OneTimePreKey_key_tag         3
 #define meshtastic_PreKeyBundle_node_num_tag     1
 #define meshtastic_PreKeyBundle_identity_key_tag 2
 #define meshtastic_PreKeyBundle_signed_pre_key_tag 3
@@ -91,7 +94,8 @@ extern "C" {
 /* Struct field encoding specification for nanopb */
 #define meshtastic_OneTimePreKey_FIELDLIST(X, a) \
 X(a, STATIC,   SINGULAR, UINT32,   id,                1) \
-X(a, STATIC,   SINGULAR, FIXED_LENGTH_BYTES, key,               2)
+X(a, STATIC,   OPTIONAL, UINT32,   node_num,          2) \
+X(a, STATIC,   SINGULAR, FIXED_LENGTH_BYTES, key,               3)
 #define meshtastic_OneTimePreKey_CALLBACK NULL
 #define meshtastic_OneTimePreKey_DEFAULT NULL
 
@@ -100,14 +104,16 @@ X(a, STATIC,   OPTIONAL, UINT32,   node_num,          1) \
 X(a, STATIC,   SINGULAR, FIXED_LENGTH_BYTES, identity_key,      2) \
 X(a, STATIC,   SINGULAR, FIXED_LENGTH_BYTES, signed_pre_key,    3) \
 X(a, STATIC,   SINGULAR, FIXED_LENGTH_BYTES, pre_key_signature,   4) \
-X(a, STATIC,   REPEATED, MESSAGE,  one_time_pre_keys,   5)
-#define meshtastic_PreKeyBundle_CALLBACK NULL
+X(a, CALLBACK, REPEATED, MESSAGE,  one_time_pre_keys,   5)
+extern bool meshtastic_PreKeyBundle_callback(pb_istream_t *istream, pb_ostream_t *ostream, const pb_field_t *field);
+#define meshtastic_PreKeyBundle_CALLBACK meshtastic_PreKeyBundle_callback
 #define meshtastic_PreKeyBundle_DEFAULT NULL
 #define meshtastic_PreKeyBundle_one_time_pre_keys_MSGTYPE meshtastic_OneTimePreKey
 
 #define meshtastic_OneTimePreKeyBundle_FIELDLIST(X, a) \
-X(a, STATIC,   REPEATED, MESSAGE,  one_time_pre_keys,   2)
-#define meshtastic_OneTimePreKeyBundle_CALLBACK NULL
+X(a, CALLBACK, REPEATED, MESSAGE,  one_time_pre_keys,   2)
+extern bool meshtastic_OneTimePreKeyBundle_callback(pb_istream_t *istream, pb_ostream_t *ostream, const pb_field_t *field);
+#define meshtastic_OneTimePreKeyBundle_CALLBACK meshtastic_OneTimePreKeyBundle_callback
 #define meshtastic_OneTimePreKeyBundle_DEFAULT NULL
 #define meshtastic_OneTimePreKeyBundle_one_time_pre_keys_MSGTYPE meshtastic_OneTimePreKey
 
@@ -120,8 +126,8 @@ X(a, STATIC,   SINGULAR, FIXED_LENGTH_BYTES, public_key,        2)
 #define meshtastic_InitialMessage_FIELDLIST(X, a) \
 X(a, STATIC,   SINGULAR, FIXED_LENGTH_BYTES, ephermal_key,      1) \
 X(a, STATIC,   SINGULAR, UINT32,   otpk_id,           2) \
-X(a, CALLBACK, SINGULAR, BYTES,    initial_cyphertext,   3)
-#define meshtastic_InitialMessage_CALLBACK pb_default_field_callback
+X(a, STATIC,   SINGULAR, BYTES,    initial_cyphertext,   3)
+#define meshtastic_InitialMessage_CALLBACK NULL
 #define meshtastic_InitialMessage_DEFAULT NULL
 
 extern const pb_msgdesc_t meshtastic_OneTimePreKey_msg;
@@ -138,11 +144,11 @@ extern const pb_msgdesc_t meshtastic_InitialMessage_msg;
 #define meshtastic_InitialMessage_fields &meshtastic_InitialMessage_msg
 
 /* Maximum encoded size of messages (where known) */
-/* meshtastic_InitialMessage_size depends on runtime parameters */
-#define MESHTASTIC_MESHTASTIC_X3DH_PAYLOAD_PB_H_MAX_SIZE meshtastic_PreKeyBundle_size
-#define meshtastic_OneTimePreKeyBundle_size      210
-#define meshtastic_OneTimePreKey_size            40
-#define meshtastic_PreKeyBundle_size             560
+/* meshtastic_PreKeyBundle_size depends on runtime parameters */
+/* meshtastic_OneTimePreKeyBundle_size depends on runtime parameters */
+#define MESHTASTIC_MESHTASTIC_X3DH_PAYLOAD_PB_H_MAX_SIZE meshtastic_InitialMessage_size
+#define meshtastic_InitialMessage_size           223
+#define meshtastic_OneTimePreKey_size            46
 #define meshtastic_RequestBundle_size            40
 
 #ifdef __cplusplus

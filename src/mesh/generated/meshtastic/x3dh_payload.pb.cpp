@@ -9,7 +9,7 @@
 PB_BIND(meshtastic_OneTimePreKey, meshtastic_OneTimePreKey, AUTO)
 
 
-PB_BIND(meshtastic_PreKeyBundle, meshtastic_PreKeyBundle, 2)
+PB_BIND(meshtastic_PreKeyBundle, meshtastic_PreKeyBundle, AUTO)
 
 
 PB_BIND(meshtastic_OneTimePreKeyBundle, meshtastic_OneTimePreKeyBundle, AUTO)

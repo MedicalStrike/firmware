@@ -40,6 +40,23 @@ typedef enum _meshtastic_X3DHProtocol {
     meshtastic_X3DHProtocol_DOUBLE_RATCHET = 1
 } meshtastic_X3DHProtocol;
 
+/* Signals the current state of the X3DH-Agreement */
+typedef enum _meshtastic_X3DHState { /* X3DH-Agreement has not benn started */
+    meshtastic_X3DHState_X3DH_NOT_STARTED = 0,
+    /* Initial pre-key-bundle requested */
+    meshtastic_X3DHState_BUNDLE_REQUESTED = 1,
+    /* Initial pre-key-bundle sent */
+    meshtastic_X3DHState_BUNDLE_SENT = 2,
+    /* Bundle requested from external server */
+    meshtastic_X3DHState_EXTERNAL_BUNDLE_REQUESTED = 3,
+    /* Pre-key-bundle received */
+    meshtastic_X3DHState_BUNDLE_RECEIVED = 4,
+    /* Initial message sent */
+    meshtastic_X3DHState_INIT_SENT = 5,
+    /* Post-X3DH protocol set, end of X3DH-Agreement */
+    meshtastic_X3DHState_PROTOCOL_SET = 6
+} meshtastic_X3DHState;
+
 /* Struct definitions */
 typedef PB_BYTES_ARRAY_T(210) meshtastic_X3DHMessage_payload_t;
 typedef struct _meshtastic_X3DHMessage {
@@ -63,6 +80,10 @@ extern "C" {
 #define _meshtastic_X3DHProtocol_MIN meshtastic_X3DHProtocol_X3DH_SECRET
 #define _meshtastic_X3DHProtocol_MAX meshtastic_X3DHProtocol_DOUBLE_RATCHET
 #define _meshtastic_X3DHProtocol_ARRAYSIZE ((meshtastic_X3DHProtocol)(meshtastic_X3DHProtocol_DOUBLE_RATCHET+1))
+
+#define _meshtastic_X3DHState_MIN meshtastic_X3DHState_X3DH_NOT_STARTED
+#define _meshtastic_X3DHState_MAX meshtastic_X3DHState_PROTOCOL_SET
+#define _meshtastic_X3DHState_ARRAYSIZE ((meshtastic_X3DHState)(meshtastic_X3DHState_PROTOCOL_SET+1))
 
 #define meshtastic_X3DHMessage_type_ENUMTYPE meshtastic_X3DHMessageType
 #define meshtastic_X3DHMessage_continue_protocol_ENUMTYPE meshtastic_X3DHProtocol
