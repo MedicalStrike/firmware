@@ -20,9 +20,9 @@
 #include "error.h"
 #include "main.h"
 #include "mesh-pb-constants.h"
+#include "mesh/generated/meshtastic/x3dh_payload.pb.h" // To include protobuf-struct-definition with another std::vector
 #include "meshUtils.h"
 #include "modules/NeighborInfoModule.h"
-#include "mesh/generated/meshtastic/x3dh_payload.pb.h" // To include protobuf-struct-definition with another std::vector
 #include <ErriezCRC32.h>
 #include <algorithm>
 #include <pb_decode.h>
@@ -654,7 +654,7 @@ void NodeDB::installDefaultConfig(bool preserveKey = false)
     strncpy(config.network.ntp_server, "meshtastic.pool.ntp.org", 32);
 
 #if (defined(T_DECK) || defined(T_WATCH_S3) || defined(UNPHONE) || defined(PICOMPUTER_S3) || defined(SENSECAP_INDICATOR) ||      \
-     defined(ELECROW_PANEL)||defined(HELTEC_V4_TFT)) &&                                                                                                  \
+     defined(ELECROW_PANEL) || defined(HELTEC_V4_TFT)) &&                                                                        \
     HAS_TFT
     // switch BT off by default; use TFT programming mode or hotkey to enable
     config.bluetooth.enabled = false;
