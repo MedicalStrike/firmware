@@ -10,33 +10,58 @@
 #include "SHA512.h"
 #include "SPILock.h"
 #include "aes-ccm.h"
+#include "meshUtils.h"
 #include "meshtastic/x3dh_payload.pb.h"
 #include "pb_decode.h"
 #include "pb_encode.h"
+#include <string>
 
 meshtastic_PreKeyBundle x3dhDB;
 std::vector<meshtastic_OneTimePreKey> *otpks;
 
-void X3dhModule::setup()
-{
-    spiLock->lock();
-    bool x3dhDatabaseExists = FSCom.exists(x3dhDatabaseFilename);
-    spiLock->unlock();
-    if (x3dhDatabaseExists) {
-        loadX3dhDb();
-    } else {
-        initX3dhDb();
-    }
-}
-
 bool X3dhModule::handleReceivedProtobuf(const meshtastic_MeshPacket &mp, meshtastic_X3DHMessage *decoded)
 {
     bool toReturn = false;
-    if (decoded == NULL && mp.which_payload_variant == meshtastic_PortNum_NODEINFO_APP) {
-        meshtastic_NodeInfoLite *node = nodeDB->getMeshNode(mp.from);
-        if (node == NULL) {
-            LOG_WARN("Node %s not found in Database, aborting.", node->num);
+    // if (decoded == NULL && mp.which_payload_variant == meshtastic_PortNum_NODEINFO_APP) {
+    //     meshtastic_NodeInfoLite *node = nodeDB->getMeshNode(mp.from);
+    //     if (node == NULL) {
+    //         LOG_WARN("Node %s not found in Database, aborting.", node->num);
+    //     } else {
+    //         bool usesX3dh = node->user.has_x3dh_shared_key;
+    //         if (usesX3dh) {
+    //             LOG_INFO("X3DH-Agreement already finished for Node %s", node->num);
+    //         } else {
+    //             if (!node->user.has_x3dh_state || node->user.x3dh_state == meshtastic_X3DHState_X3DH_NOT_STARTED) {
+    //                 meshtastic_X3DHMessage init = meshtastic_X3DHMessage_init_default;
+    //                 meshtastic_RequestBundle initBundle = meshtastic_RequestBundle_init_default;
+    //                 initBundle.node_num = mp.from;
+    //                 memcpy(initBundle.public_key, mp.public_key.bytes, 32);
+    //                 uint8_t initPayloadBytes[meshtastic_RequestBundle_size] = {0};
+    //                 pb_encode_to_bytes(initPayloadBytes, meshtastic_RequestBundle_size, meshtastic_RequestBundle_fields,
+    //                                    &initBundle);
+    //                 memcpy(init.payload.bytes, initPayloadBytes, meshtastic_RequestBundle_size);
+    //                 auto x3dhMessage = allocDataProtobuf(init);
+    //                 x3dhMessage->to = mp.from;
+    //                 x3dhMessage->pki_encrypted = true;
+    //                 memcpy(x3dhMessage->public_key.bytes, crypto->public_key, x3dhMessage->public_key.size);
+    //                 x3dhMessage->decoded.want_response = true;
+    //                 node->user.x3dh_state = meshtastic_X3DHState_BUNDLE_REQUESTED;
+    //                 service->sendToMesh(x3dhMessage);
+    //             } else {
+    //                 LOG_INFO("X3DH-Agreement already started for Node %s", node->num);
+    //             }
+    //         }
+    //     }
+    if (decoded == NULL && mp.which_payload_variant == meshtastic_PortNum_TEXT_MESSAGE_APP) {
+        char messageArray[mp.decoded.payload.size];
+        memcpy(messageArray, mp.decoded.payload.bytes, mp.decoded.payload.size);
+        std::string message(messageArray);
+        LOG_WARN("Message from %s: %s", mp.from, message);
+        size_t found = message.find("startX3DH");
+        if (found == std::string::npos) {
+            LOG_INFO("Message from %s does not contain the keyword to start an X3DH-agreement.", mp.from);
         } else {
+            meshtastic_NodeInfoLite *node = nodeDB->getMeshNode(mp.from);
             bool usesX3dh = node->user.has_x3dh_shared_key;
             if (usesX3dh) {
                 LOG_INFO("X3DH-Agreement already finished for Node %s", node->num);
@@ -55,16 +80,18 @@ bool X3dhModule::handleReceivedProtobuf(const meshtastic_MeshPacket &mp, meshtas
                     x3dhMessage->pki_encrypted = true;
                     memcpy(x3dhMessage->public_key.bytes, crypto->public_key, x3dhMessage->public_key.size);
                     x3dhMessage->decoded.want_response = true;
+                    x3dhMessage->want_ack = true;
                     node->user.x3dh_state = meshtastic_X3DHState_BUNDLE_REQUESTED;
                     service->sendToMesh(x3dhMessage);
                 } else {
                     LOG_INFO("X3DH-Agreement already started for Node %s", node->num);
                 }
             }
+            toReturn = true;
         }
     } else {
         switch (decoded->type) {
-        case meshtastic_X3DHMessageType_REQUEST_BUNDLE:
+        case meshtastic_X3DHMessageType_REQUEST_BUNDLE: {
             x3dhReply = meshtastic_X3DHMessage_init_default;
             meshtastic_RequestBundle bundle;
             memset(&bundle, 0, sizeof(bundle));
@@ -115,8 +142,9 @@ bool X3dhModule::handleReceivedProtobuf(const meshtastic_MeshPacket &mp, meshtas
                 x3dhReply.type = meshtastic_X3DHMessageType_X3DH_ERROR;
             }
             break;
+        }
 
-        case meshtastic_X3DHMessageType_EXTERNAL_BUNDLE:
+        case meshtastic_X3DHMessageType_EXTERNAL_BUNDLE: {
             meshtastic_RequestBundle bundle;
             memset(&bundle, 0, sizeof(bundle));
             meshtastic_X3DHMessage init = meshtastic_X3DHMessage_init_default;
@@ -160,9 +188,132 @@ bool X3dhModule::handleReceivedProtobuf(const meshtastic_MeshPacket &mp, meshtas
             x3dhServerMessage->to = to;
             service->sendToMesh(x3dhServerMessage);
             break;
+        }
 
-        case meshtastic_X3DHMessageType_INITIAL_MESSAGE:
+        case meshtastic_X3DHMessageType_RESPONSE_BUNDLE: {
             x3dhReply = meshtastic_X3DHMessage_init_default;
+            NodeNum to = mp.from;
+            meshtastic_PreKeyBundle preKeyBundle;
+            if (pb_decode_from_bytes(decoded->payload.bytes, sizeof(decoded->payload.bytes), meshtastic_PreKeyBundle_fields,
+                                     &preKeyBundle)) {
+                meshtastic_NodeInfoLite *node = nodeDB->getMeshNode(preKeyBundle.node_num);
+                if (memcmp(preKeyBundle.identity_key, &node->user.public_key, 32)) {
+                    std::vector<meshtastic_OneTimePreKey> tempKeyVector = preKeyBundle.one_time_pre_keys;
+                    if (tempKeyVector.size() > 0) {
+                        HKDF<SHA512> hkdf;
+                        uint8_t ephermalPrivKey[32] = {0};
+                        uint8_t ephermalPubKey[32] = {0};
+                        uint8_t DH1[32] = {0};
+                        uint8_t DH2[32] = {0};
+                        uint8_t DH3[32] = {0};
+                        uint8_t DH4[32] = {0};
+                        uint8_t AD[64] = {0};
+                        uint8_t KM[160] = {0};
+                        uint8_t SK[32] = {0};
+                        uint8_t futureSecret[32] = {0};
+                        uint8_t nonceExtra[4] = {0};
+                        Curve25519::dh1(ephermalPubKey, ephermalPrivKey);
+                        meshtastic_OneTimePreKey singleOneTimePreKey = tempKeyVector.front();
+                        memcpy(DH1, preKeyBundle.signed_pre_key, 32);
+                        memcpy(DH2, preKeyBundle.identity_key, 32);
+                        memcpy(DH3, preKeyBundle.signed_pre_key, 32);
+                        memcpy(DH4, singleOneTimePreKey.key, 32);
+                        memcpy(AD, x3dhDB.identity_key, 32);
+                        memcpy(AD + 32, &mp.public_key, 32);
+                        memcpy(KM, HASH_PADDING, 32);
+                        CryptRNG.rand(futureSecret, 32);
+                        CryptRNG.rand(nonceExtra, 4);
+                        if (!crypto->setDHPublicKey(DH1)) {
+                            x3dhReply.type = meshtastic_X3DHMessageType_X3DH_ERROR;
+                            break;
+                        } else {
+                            memcpy(KM + 32, DH1, 32);
+                            clean(DH1);
+                        }
+                        if (!Curve25519::dh2(DH2, ephermalPrivKey)) {
+                            x3dhReply.type = meshtastic_X3DHMessageType_X3DH_ERROR;
+                            break;
+                        } else {
+                            memcpy(KM + 64, DH2, 32);
+                            clean(DH2);
+                        }
+                        if (!Curve25519::dh2(DH3, ephermalPrivKey)) {
+                            x3dhReply.type = meshtastic_X3DHMessageType_X3DH_ERROR;
+                            break;
+                        } else {
+                            memcpy(KM + 96, DH3, 32);
+                            clean(DH3);
+                        }
+                        if (!Curve25519::dh2(DH4, ephermalPrivKey)) {
+                            x3dhReply.type = meshtastic_X3DHMessageType_X3DH_ERROR;
+                            break;
+                        } else {
+                            memcpy(KM + 128, DH4, 32);
+                            clean(DH4);
+                        }
+                        hkdf.setKey(KM, sizeof(KM));
+                        hkdf.extract(SK, 32, x3dhHkdfInfo, sizeof(x3dhHkdfInfo));
+                        hkdf.clear();
+                        clean(KM);
+                        uint8_t nonce[16] = {0};
+                        hkdf.setKey(nonceExtra, 4);
+                        hkdf.extract(nonce, 16, x3dhHkdfInfo, sizeof(x3dhHkdfInfo));
+                        hkdf.clear();
+                        clean(nonceExtra);
+                        uint8_t cyphertext[40] = {0};
+                        if (aes_ccm_ae(SK, 32, nonce, 8, futureSecret, 32, AD, 64, cyphertext, cyphertext + 32)) {
+                            meshtastic_InitialMessage initMessage = meshtastic_InitialMessage_init_default;
+                            initMessage.otpk_id = singleOneTimePreKey.id;
+                            memcpy(initMessage.ephermal_key, ephermalPubKey, 32);
+                            memcpy(initMessage.initial_cyphertext.bytes, cyphertext, 40);
+                            size_t initMessageSize;
+                            pb_get_encoded_size(&initMessageSize, meshtastic_InitialMessage_fields, &initMessage);
+                            uint8_t initialMessageBytes[initMessageSize] = {0};
+                            pb_encode_to_bytes(initialMessageBytes, initMessageSize, meshtastic_InitialMessage_fields,
+                                               &initMessage);
+                            memcpy(x3dhReply.payload.bytes, initialMessageBytes, sizeof(initialMessageBytes));
+                            clean(initialMessageBytes, initMessageSize);
+                            node->user.x3dh_state = meshtastic_X3DHState_INIT_SENT;
+                            LOG_INFO("Initial message sent to node %s", node->num);
+                            printBytes("Plaintext key: ", futureSecret, 32);
+                            printBytes("Encrypted key: ", cyphertext, 40);
+                        } else {
+                            LOG_WARN("Authenticated encryption of initial message failed, aborting X3DH handshake");
+                            x3dhReply.type = meshtastic_X3DHMessageType_X3DH_ERROR;
+                            to = preKeyBundle.node_num;
+                            // Reset state so we can try again
+                            node->user.x3dh_state = meshtastic_X3DHState_X3DH_NOT_STARTED;
+                        }
+                        clean(futureSecret);
+                        clean(SK);
+                        clean(nonce);
+                        clean(cyphertext);
+                        clean(ephermalPrivKey);
+                        clean(ephermalPubKey);
+                        clean(singleOneTimePreKey);
+                        tempKeyVector.clear();
+                    } else {
+                        LOG_WARN("No one-time pre-key provided, aborting X3DH handshake");
+                        x3dhReply.type = meshtastic_X3DHMessageType_X3DH_ERROR;
+                        to = preKeyBundle.node_num;
+                        // Reset state so we can try again
+                        node->user.x3dh_state = meshtastic_X3DHState_X3DH_NOT_STARTED;
+                    }
+                } else {
+                    LOG_WARN("Node public key mismatch, aborting X3DH handshake");
+                    x3dhReply.type = meshtastic_X3DHMessageType_X3DH_ERROR;
+                    to = preKeyBundle.node_num;
+                    // Reset state so we can try again
+                    node->user.x3dh_state = meshtastic_X3DHState_X3DH_NOT_STARTED;
+                }
+            }
+            clean(preKeyBundle);
+            break;
+        }
+
+        case meshtastic_X3DHMessageType_INITIAL_MESSAGE: {
+            x3dhReply = meshtastic_X3DHMessage_init_default;
+            meshtastic_NodeInfoLite *node = nodeDB->getMeshNode(mp.from);
             meshtastic_InitialMessage initialMessage;
             memset(&initialMessage, 0, sizeof(initialMessage));
             if (pb_decode_from_bytes(decoded->payload.bytes, sizeof(decoded->payload.bytes), meshtastic_InitialMessage_fields,
@@ -179,8 +330,8 @@ bool X3dhModule::handleReceivedProtobuf(const meshtastic_MeshPacket &mp, meshtas
                 memcpy(DH2, initialMessage.ephermal_key, 32);
                 memcpy(DH3, initialMessage.ephermal_key, 32);
                 memcpy(DH4, initialMessage.ephermal_key, 32);
-                memcpy(AD, x3dhDB.identity_key, 32);
-                memcpy(AD + 32, &mp.public_key, 32);
+                memcpy(AD, &mp.public_key, 32);
+                memcpy(AD + 32, x3dhDB.identity_key, 32);
                 memcpy(KM, HASH_PADDING, 32);
                 if (!Curve25519::dh2(DH1, x3dhDB.signed_pre_key)) {
                     x3dhReply.type = meshtastic_X3DHMessageType_X3DH_ERROR;
@@ -218,11 +369,40 @@ bool X3dhModule::handleReceivedProtobuf(const meshtastic_MeshPacket &mp, meshtas
                 }
                 hkdf.setKey(KM, sizeof(KM));
                 hkdf.extract(SK, 32, x3dhHkdfInfo, sizeof(x3dhHkdfInfo));
+                hkdf.clear();
                 clean(KM);
+                uint8_t nonce[16] = {0};
+                hkdf.setKey(&mp.channel, 4);
+                hkdf.extract(nonce, 16, x3dhHkdfInfo, sizeof(x3dhHkdfInfo));
+                hkdf.clear();
+                uint8_t receivedSecret[32] = {0};
+                uint8_t authTag[8] = {0};
+                memcpy(authTag, &initialMessage.initial_cyphertext.bytes + initialMessage.initial_cyphertext.size - 8, 8);
+                if (aes_ccm_ad(SK, 32, nonce, 8, initialMessage.initial_cyphertext.bytes,
+                               initialMessage.initial_cyphertext.size - 8, AD, 64, authTag, receivedSecret)) {
+
+                    memcpy(node->user.x3dh_shared_key.bytes, receivedSecret, 32);
+                    printBytes("Plaintext key: ", receivedSecret, 32);
+                    printBytes("Encrypted key: ", initialMessage.initial_cyphertext.bytes, 40);
+                    node->user.x3dh_shared_key.size = 32;
+                    node->user.x3dh_state = meshtastic_X3DHState_PROTOCOL_SET;
+                    node->bitfield |= NODEINFO_BITFIELD_USES_X3DH_MASK;
+                    x3dhReply.type = meshtastic_X3DHMessageType_PROTOCOL_SWITCH;
+                    x3dhReply.continue_protocol = meshtastic_X3DHProtocol_X3DH_SECRET;
+                    LOG_INFO("X3DH-Agreement with node %s completed", node->num);
+                } else {
+                    x3dhReply.type = meshtastic_X3DHMessageType_X3DH_ERROR;
+                    node->user.x3dh_state = meshtastic_X3DHState_X3DH_NOT_STARTED;
+                    LOG_WARN("Decryption unsuccessful, aborting X3dh-agreement with node %s", node->num);
+                }
+                clean(SK);
+                clean(receivedSecret);
+                clean(authTag);
             }
             break;
+        }
 
-        case meshtastic_X3DHMessageType_PROTOCOL_SWITCH:
+        case meshtastic_X3DHMessageType_PROTOCOL_SWITCH: {
             meshtastic_NodeInfoLite *node = nodeDB->getMeshNode(mp.from);
             if (node->user.x3dh_state == meshtastic_X3DHState_INIT_SENT && node->user.has_x3dh_shared_key) {
                 LOG_INFO("Confirmed usage of X3DH-Secret for future direct messages with node %s", mp.from);
@@ -234,8 +414,9 @@ bool X3dhModule::handleReceivedProtobuf(const meshtastic_MeshPacket &mp, meshtas
                 LOG_INFO("X3DH-Agreement not finished, protocol won't be set");
             }
             break;
+        }
 
-        case meshtastic_X3DHMessageType_X3DH_ERROR:
+        case meshtastic_X3DHMessageType_X3DH_ERROR: {
             meshtastic_NodeInfoLite *node = nodeDB->getMeshNode(mp.from);
             if ((node->bitfield & NODEINFO_BITFIELD_USES_X3DH_MASK) &&
                 node->user.x3dh_state == meshtastic_X3DHState_PROTOCOL_SET) {
@@ -255,14 +436,16 @@ bool X3dhModule::handleReceivedProtobuf(const meshtastic_MeshPacket &mp, meshtas
                     auto x3dhMessage = allocDataProtobuf(init);
                     x3dhMessage->pki_encrypted = true;
                     memcpy(x3dhMessage->public_key.bytes, crypto->public_key, x3dhMessage->public_key.size);
-                    x3dhMessage->to = to;
+                    x3dhMessage->to = bundle.node_num;
                     service->sendToMesh(x3dhMessage);
                 }
             }
             break;
+        }
 
-        default:
+        default: {
             break;
+        }
         }
         toReturn = true;
     }
@@ -271,8 +454,11 @@ bool X3dhModule::handleReceivedProtobuf(const meshtastic_MeshPacket &mp, meshtas
 
 meshtastic_MeshPacket *X3dhModule::allocReply()
 {
-    auto req = *currentRequest;
-    auto &p = req.decoded;
+    auto x3dhMessage = allocDataProtobuf(x3dhReply);
+    x3dhMessage->decoded.portnum = ourPortNum;
+    memcpy(x3dhMessage->public_key.bytes, crypto->public_key, x3dhMessage->public_key.size);
+    x3dhMessage->pki_encrypted = true;
+    return x3dhMessage;
 }
 
 void X3dhModule::loadX3dhDb()
@@ -294,7 +480,7 @@ void X3dhModule::initX3dhDb()
     x3dhDB.one_time_pre_keys = std::vector<meshtastic_OneTimePreKey>(MAX_NUM_OTPKS);
     for (size_t i = 0; i <= MAX_NUM_OTPKS; i++) {
         if (i == MAX_NUM_OTPKS) {
-            crypto->generateKeyPair(tempPubKey, tempPrivKey);
+            Curve25519::dh1(tempPubKey, tempPrivKey);
             memcpy(x3dhDB.signed_pre_key, tempPrivKey, 32);
         } else {
             meshtastic_OneTimePreKey otpk = genOTPK();
@@ -316,13 +502,14 @@ meshtastic_OneTimePreKey X3dhModule::genOTPK()
     uint8_t tempPrivKey[32] = {0};
     uint8_t tempPubKey[32] = {0};
     uint8_t OTPKNum[4] = {0};
+    Curve25519::dh1(tempPubKey, tempPrivKey);
     CryptRNG.rand(OTPKNum, 4);
     meshtastic_OneTimePreKey otpk = meshtastic_OneTimePreKey_init_default;
     otpk.id = (uint32_t)OTPKNum;
     memcpy(otpk.key, tempPrivKey, 32);
-    x3dhDB.one_time_pre_keys.insert(x3dhDB.one_time_pre_keys.begin(), otpk);
     clean(tempPrivKey);
     clean(tempPubKey);
+    return otpk;
 }
 
 void X3dhModule::getAndRegenOTPK(uint32_t *keyId, uint8_t otpkPrivKey[32])
@@ -333,7 +520,7 @@ void X3dhModule::getAndRegenOTPK(uint32_t *keyId, uint8_t otpkPrivKey[32])
             memcpy(otpkPrivKey, tempOtpks.key, 32);
             otpks->erase(iterator);
             if (x3dhDB.node_num ==
-                myNodeInfo.my_node_num) { // Only regenerate one-tim pre-key if we don't stor bundle on external server
+                myNodeInfo.my_node_num) { // Only regenerate onee-tim pre-key if we don't store bundle on external server
                 otpks->insert(iterator, genOTPK());
             }
         }
@@ -354,6 +541,14 @@ size_t X3dhModule::getSinglePreKeyBundleAllocatedSize()
     size_t preKeyBundleDatabaseSize;
     pb_get_encoded_size(&preKeyBundleDatabaseSize, meshtastic_PreKeyBundle_fields, &emptyPreKeyBundle);
     return preKeyBundleDatabaseSize + (meshtastic_OneTimePreKey_size);
+}
+
+bool X3dhModule::checkDatabaseExists()
+{
+    spiLock->lock();
+    bool x3dhDatabaseExists = FSCom.exists(x3dhDatabaseFilename);
+    spiLock->unlock();
+    return x3dhDatabaseExists;
 }
 
 bool X3dhModule::saveX3dhDatabaseToDisk()

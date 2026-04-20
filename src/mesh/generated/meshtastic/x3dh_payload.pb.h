@@ -4,6 +4,7 @@
 #ifndef PB_MESHTASTIC_MESHTASTIC_X3DH_PAYLOAD_PB_H_INCLUDED
 #define PB_MESHTASTIC_MESHTASTIC_X3DH_PAYLOAD_PB_H_INCLUDED
 #include <pb.h>
+#include <vector>
 
 #if PB_PROTO_HEADER_VERSION != 40
 #error Regenerate this file with the current version of nanopb generator.
