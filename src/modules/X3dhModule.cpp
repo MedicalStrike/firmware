@@ -22,6 +22,7 @@ std::vector<meshtastic_OneTimePreKey> *otpks;
 bool X3dhModule::handleReceivedProtobuf(const meshtastic_MeshPacket &mp, meshtastic_X3DHMessage *decoded)
 {
     bool toReturn = false;
+    LOG_DEBUG("Starting to process message with PortNum %d", mp.decoded.portnum);
     // if (decoded == NULL && mp.which_payload_variant == meshtastic_PortNum_NODEINFO_APP) {
     //     meshtastic_NodeInfoLite *node = nodeDB->getMeshNode(mp.from);
     //     if (node == NULL) {
@@ -52,21 +53,18 @@ bool X3dhModule::handleReceivedProtobuf(const meshtastic_MeshPacket &mp, meshtas
     //             }
     //         }
     //     }
-    if (decoded == NULL && mp.which_payload_variant == meshtastic_PortNum_TEXT_MESSAGE_APP) {
-        char messageArray[mp.decoded.payload.size];
-        memcpy(messageArray, mp.decoded.payload.bytes, mp.decoded.payload.size);
-        std::string message(messageArray);
-        LOG_WARN("Message from %s: %s", mp.from, message);
-        size_t found = message.find("startX3DH");
-        if (found == std::string::npos) {
-            LOG_INFO("Message from %s does not contain the keyword to start an X3DH-agreement.", mp.from);
+    if (mp.decoded.portnum == meshtastic_PortNum_TEXT_MESSAGE_APP) {
+        char messageArray[10] = "startX3DH";
+        auto &p = mp.decoded;
+        LOG_INFO("Received text msg from=0x%0x, id=0x%x, msg=%.*s", mp.from, mp.id, p.payload.size, p.payload.bytes);
+        if (memcmp(messageArray, p.payload.bytes, p.payload.size)) {
+            LOG_INFO("Message from 0x%0x does not contain the keyword to start an X3DH-agreement.", mp.from);
         } else {
             meshtastic_NodeInfoLite *node = nodeDB->getMeshNode(mp.from);
-            bool usesX3dh = node->user.has_x3dh_shared_key;
+            bool usesX3dh = node->bitfield & NODEINFO_BITFIELD_USES_X3DH_MASK;
+            LOG_INFO("Node has state %d", node->user.x3dh_state);
             if (usesX3dh) {
-                LOG_INFO("X3DH-Agreement already finished for Node %s", node->num);
-            } else {
-                if (!node->user.has_x3dh_state || node->user.x3dh_state == meshtastic_X3DHState_X3DH_NOT_STARTED) {
+                if (node->user.x3dh_state == meshtastic_X3DHState_X3DH_NOT_STARTED) {
                     meshtastic_X3DHMessage init = meshtastic_X3DHMessage_init_default;
                     meshtastic_RequestBundle initBundle = meshtastic_RequestBundle_init_default;
                     initBundle.node_num = mp.from;
@@ -84,8 +82,10 @@ bool X3dhModule::handleReceivedProtobuf(const meshtastic_MeshPacket &mp, meshtas
                     node->user.x3dh_state = meshtastic_X3DHState_BUNDLE_REQUESTED;
                     service->sendToMesh(x3dhMessage);
                 } else {
-                    LOG_INFO("X3DH-Agreement already started for Node %s", node->num);
+                    LOG_INFO("X3DH-Agreement already started for Node 0x%0x", node->num);
                 }
+            } else {
+                LOG_INFO("X3DH-Agreement already finished for Node 0x%0x", node->num);
             }
             toReturn = true;
         }
@@ -463,10 +463,17 @@ meshtastic_MeshPacket *X3dhModule::allocReply()
 
 void X3dhModule::loadX3dhDb()
 {
-    spiLock->lock();
-    auto state = nodeDB->loadProto(x3dhDatabaseFilename, getMaxPreKeyBundleAllocatedSize(), sizeof(meshtastic_PreKeyBundle),
-                                   &meshtastic_PreKeyBundle_msg, &x3dhDB);
-    spiLock->unlock();
+    LOG_INFO("Loading X3DH-Database from file %s", x3dhDatabaseFilename);
+    LOG_INFO("Calculated size: %d", getMaxPreKeyBundleAllocatedSize());
+    if (nodeDB->loadProto(x3dhDatabaseFilename, getMaxPreKeyBundleAllocatedSize(), sizeof(meshtastic_PreKeyBundle),
+                          &meshtastic_PreKeyBundle_msg, &x3dhDB) != LoadFileResult::LOAD_SUCCESS) {
+        LOG_WARN("Could not load X3DH-DB from disk, creating new one");
+        initX3dhDb();
+    } else {
+        size_t preKeyBundleDatabaseSize;
+        pb_get_encoded_size(&preKeyBundleDatabaseSize, meshtastic_PreKeyBundle_fields, &x3dhDB);
+        LOG_INFO("Real size: %d", preKeyBundleDatabaseSize);
+    }
     otpks = &x3dhDB.one_time_pre_keys;
 }
 
@@ -477,39 +484,31 @@ void X3dhModule::initX3dhDb()
     memcpy(x3dhDB.identity_key, crypto->public_key, 32);
     uint8_t tempPrivKey[32] = {0};
     uint8_t tempPubKey[32] = {0};
-    x3dhDB.one_time_pre_keys = std::vector<meshtastic_OneTimePreKey>(MAX_NUM_OTPKS);
-    for (size_t i = 0; i <= MAX_NUM_OTPKS; i++) {
-        if (i == MAX_NUM_OTPKS) {
-            Curve25519::dh1(tempPubKey, tempPrivKey);
-            memcpy(x3dhDB.signed_pre_key, tempPrivKey, 32);
-        } else {
-            meshtastic_OneTimePreKey otpk = genOTPK();
-            x3dhDB.one_time_pre_keys.insert(x3dhDB.one_time_pre_keys.begin(), otpk);
-        }
-    }
+    Curve25519::dh1(tempPubKey, tempPrivKey);
+    memcpy(x3dhDB.signed_pre_key, tempPrivKey, 32);
     uint8_t tempSig[64] = {0};
     crypto->xeddsa_sign(tempPubKey, 32, tempSig);
     memcpy(x3dhDB.pre_key_signature, tempSig, 64);
+    x3dhDB.one_time_pre_keys = std::vector<meshtastic_OneTimePreKey>(MAX_NUM_OTPKS);
+    otpks = &x3dhDB.one_time_pre_keys;
+    for (size_t i = 0; i < MAX_NUM_OTPKS; i++) {
+        meshtastic_OneTimePreKey otpk = otpks->at(i);
+        genOTPK(otpk.id, otpk.key);
+    }
     clean(tempPrivKey);
     clean(tempPubKey);
     clean(tempSig);
-    otpks = &x3dhDB.one_time_pre_keys;
     bool result = saveX3dhDatabaseToDisk();
 }
 
-meshtastic_OneTimePreKey X3dhModule::genOTPK()
+void X3dhModule::genOTPK(uint32_t otpkId, uint8_t privKey[32])
 {
-    uint8_t tempPrivKey[32] = {0};
     uint8_t tempPubKey[32] = {0};
     uint8_t OTPKNum[4] = {0};
-    Curve25519::dh1(tempPubKey, tempPrivKey);
+    Curve25519::dh1(tempPubKey, privKey);
     CryptRNG.rand(OTPKNum, 4);
-    meshtastic_OneTimePreKey otpk = meshtastic_OneTimePreKey_init_default;
-    otpk.id = (uint32_t)OTPKNum;
-    memcpy(otpk.key, tempPrivKey, 32);
-    clean(tempPrivKey);
+    memcpy(&otpkId, OTPKNum, 4);
     clean(tempPubKey);
-    return otpk;
 }
 
 void X3dhModule::getAndRegenOTPK(uint32_t *keyId, uint8_t otpkPrivKey[32])
@@ -520,8 +519,10 @@ void X3dhModule::getAndRegenOTPK(uint32_t *keyId, uint8_t otpkPrivKey[32])
             memcpy(otpkPrivKey, tempOtpks.key, 32);
             otpks->erase(iterator);
             if (x3dhDB.node_num ==
-                myNodeInfo.my_node_num) { // Only regenerate onee-tim pre-key if we don't store bundle on external server
-                otpks->insert(iterator, genOTPK());
+                myNodeInfo.my_node_num) { // Only regenerate one-time pre-key if we don't store bundle on external server
+                meshtastic_OneTimePreKey otpk = meshtastic_OneTimePreKey_init_default;
+                genOTPK(otpk.id, otpk.key);
+                otpks->insert(iterator, otpk);
             }
         }
     }
@@ -553,13 +554,9 @@ bool X3dhModule::checkDatabaseExists()
 
 bool X3dhModule::saveX3dhDatabaseToDisk()
 {
-#ifdef FSCom
-    spiLock->lock();
-    FSCom.mkdir("/x3dh");
-    spiLock->unlock();
-#endif
     size_t preKeyBundleDatabaseSize;
     pb_get_encoded_size(&preKeyBundleDatabaseSize, meshtastic_PreKeyBundle_fields, &x3dhDB);
+    LOG_INFO("X3DH-DB size before saving: %d", preKeyBundleDatabaseSize);
     return nodeDB->saveProto(x3dhDatabaseFilename, preKeyBundleDatabaseSize, &meshtastic_PreKeyBundle_msg, &x3dhDB, false);
 }
 

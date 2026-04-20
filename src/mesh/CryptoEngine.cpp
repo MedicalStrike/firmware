@@ -145,6 +145,10 @@ bool CryptoEngine::encryptCurve25519(uint32_t toNode, uint32_t fromNode, meshtas
         LOG_DEBUG("Node %d or their public_key not found", toNode);
         return false;
     }
+
+    printBytes("Attempt encrypt with own public key: ", public_key, 32);
+    printBytes("Attempt encrypt with other node public key: ", remotePublic.bytes, 32);
+
     if (!setDHPublicKey(remotePublic.bytes)) {
         return false;
     }
@@ -175,17 +179,23 @@ bool CryptoEngine::encryptCurve25519(uint32_t toNode, uint32_t fromNode, meshtas
 bool CryptoEngine::decryptCurve25519(uint32_t fromNode, meshtastic_UserLite_public_key_t remotePublic, uint64_t packetNum,
                                      size_t numBytes, const uint8_t *bytes, uint8_t *bytesOut)
 {
+    printBytes("Full encrypted payload: ", bytes, numBytes);
     const uint8_t *auth = bytes + numBytes - 12; // set to last 8 bytes of text?
-    uint32_t extraNonce;                         // pointer was not really used
+    printBytes("Auth tag: ", auth, 8);
+    uint32_t extraNonce; // pointer was not really used
     memcpy(&extraNonce, auth + 8,
            sizeof(uint32_t)); // do not use dereference on potential non aligned pointers : (uint32_t *)(auth + 8);
     LOG_INFO("Random nonce value: %d", extraNonce);
-
+    uint8_t nonceBytes[4];
+    memcpy(nonceBytes, &extraNonce, 4);
+    printBytes("Nonce bytes: ", nonceBytes, 4);
     if (remotePublic.size == 0) {
         LOG_DEBUG("Node or its public key not found in database");
         return false;
     }
 
+    printBytes("Attempt decrypt with other node public key: ", remotePublic.bytes, 32);
+    printBytes("Attempt decrypt with own public key: ", public_key, 32);
     // Calculate the shared secret with the sending node and decrypt
     if (!setDHPublicKey(remotePublic.bytes)) {
         return false;

@@ -5,7 +5,7 @@
 
 #define MAX_NUM_OTPKS 10
 
-static constexpr const char *x3dhDatabaseFilename = "/x3dh/bundle.proto";
+static constexpr const char *x3dhDatabaseFilename = "/prefs/X3DH_DB.proto";
 
 static const char *x3dhHkdfInfo = "Meshtastic X3DH";
 
@@ -47,7 +47,7 @@ class X3dhModule : public ProtobufModule<meshtastic_X3DHMessage>
 
     void initX3dhDb();
 
-    meshtastic_OneTimePreKey genOTPK();
+    void genOTPK(uint32_t otpkId, uint8_t privKey[32]);
 
     void getAndRegenOTPK(uint32_t *keyId, uint8_t otpkPrivKey[32]);
 
