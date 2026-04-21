@@ -61,8 +61,8 @@ bool X3dhModule::handleReceivedProtobuf(const meshtastic_MeshPacket &mp, meshtas
             LOG_INFO("Message from 0x%0x does not contain the keyword to start an X3DH-agreement.", mp.from);
         } else {
             meshtastic_NodeInfoLite *node = nodeDB->getMeshNode(mp.from);
-            bool usesX3dh = node->bitfield & NODEINFO_BITFIELD_USES_X3DH_MASK;
-            LOG_INFO("Node has state %d", node->user.x3dh_state);
+            bool usesX3dh = !(node->bitfield & NODEINFO_BITFIELD_USES_X3DH_MASK);
+            LOG_INFO("Node has state %d", usesX3dh);
             if (usesX3dh) {
                 if (node->user.x3dh_state == meshtastic_X3DHState_X3DH_NOT_STARTED) {
                     meshtastic_X3DHMessage init = meshtastic_X3DHMessage_init_default;
@@ -92,41 +92,51 @@ bool X3dhModule::handleReceivedProtobuf(const meshtastic_MeshPacket &mp, meshtas
     } else {
         switch (decoded->type) {
         case meshtastic_X3DHMessageType_REQUEST_BUNDLE: {
+            LOG_INFO("Recieved requestfor pre-key bundle, starting work on response");
             x3dhReply = meshtastic_X3DHMessage_init_default;
             meshtastic_RequestBundle bundle;
+            meshtastic_NodeInfoLite *node = nodeDB->getMeshNode(getFrom(&mp));
             memset(&bundle, 0, sizeof(bundle));
             if (pb_decode_from_bytes(decoded->payload.bytes, sizeof(decoded->payload.bytes), meshtastic_RequestBundle_fields,
                                      &bundle)) {
+                LOG_INFO("Bundle request has correct payload, continuing processing");
                 if (x3dhDB.node_num == myNodeInfo.my_node_num) {
+                    LOG_INFO("Key bundle stored locally, creating response bundle");
                     x3dhReply.type = meshtastic_X3DHMessageType_RESPONSE_BUNDLE;
                     meshtastic_PreKeyBundle response;
                     response.node_num = x3dhDB.node_num;
                     memcpy(response.identity_key, x3dhDB.identity_key, 32);
                     uint8_t tempPubKey[32] = {0};
-                    crypto->regeneratePublicKey(tempPubKey, x3dhDB.signed_pre_key);
+                    Curve25519::eval(
+                        tempPubKey, x3dhDB.signed_pre_key,
+                        0); // No need to check for weak points since the generator function did this for the private key
                     memcpy(response.signed_pre_key, tempPubKey, 32);
                     clean(tempPubKey);
                     memcpy(response.pre_key_signature, x3dhDB.pre_key_signature, 64);
-                    meshtastic_OneTimePreKey otpkResponse = meshtastic_OneTimePreKey_init_default;
+                    response.one_time_pre_keys = std::vector<meshtastic_OneTimePreKey>(1);
                     for (auto iterator = otpks->begin(); iterator != otpks->end(); ++iterator) {
                         meshtastic_OneTimePreKey current = *iterator;
-                        if (!current.has_node_num) {
-                            otpkResponse.id = current.node_num;
-                            current.node_num = mp.from;
-                            crypto->regeneratePublicKey(tempPubKey, current.key);
-                            memcpy(otpkResponse.key, tempPubKey, 32);
+                        if (current.node_num != 0) {
+                            current.node_num = getFrom(&mp);
+                            response.one_time_pre_keys.front().node_num = current.node_num;
+                            response.one_time_pre_keys.front().id = current.id;
+                            Curve25519::eval(
+                                tempPubKey, current.key,
+                                0); // No need to check for weak points since the generator function did this for the private key
+                            memcpy(response.one_time_pre_keys.front().key, tempPubKey, 32);
                             clean(tempPubKey);
                             break;
                         }
                     }
-                    if (otpkResponse.id != 0) {
-                        response.one_time_pre_keys = std::vector<meshtastic_OneTimePreKey>(1);
-                        response.one_time_pre_keys.insert(response.one_time_pre_keys.begin(), otpkResponse);
-                        pb_encode_to_bytes(x3dhReply.payload.bytes, getSinglePreKeyBundleAllocatedSize(),
-                                           meshtastic_PreKeyBundle_fields, &response);
-                    } else {
+                    if (response.one_time_pre_keys.front().id == 0) {
                         LOG_WARN("No free one-time pre-keys found, aborting X3DH-agreement");
                         x3dhReply.type = meshtastic_X3DHMessageType_X3DH_ERROR;
+                        node->user.x3dh_state = meshtastic_X3DHState_X3DH_NOT_STARTED;
+                    } else {
+                        LOG_INFO("One-time pre-key with id %0x will be used", response.one_time_pre_keys.front().id);
+                        pb_encode_to_bytes(x3dhReply.payload.bytes, getSinglePreKeyBundleAllocatedSize(),
+                                           meshtastic_PreKeyBundle_fields, &response);
+                        node->user.has_x3dh_state = meshtastic_X3DHState_BUNDLE_SENT;
                     }
                 } else {
                     meshtastic_NodeInfoLite *server = nodeDB->getMeshNode(x3dhDB.node_num);
@@ -136,10 +146,12 @@ bool X3dhModule::handleReceivedProtobuf(const meshtastic_MeshPacket &mp, meshtas
                     memcpy(externalBundle.public_key, &server->user.public_key, 32);
                     pb_encode_to_bytes(x3dhReply.payload.bytes, meshtastic_RequestBundle_size, meshtastic_RequestBundle_fields,
                                        &externalBundle);
+                    node->user.x3dh_state = meshtastic_X3DHState_BUNDLE_SENT;
                 }
             } else {
                 LOG_WARN("Payload protobuf decode failed. Invalid payload type for REQUEST_BUNDLE");
                 x3dhReply.type = meshtastic_X3DHMessageType_X3DH_ERROR;
+                node->user.x3dh_state = meshtastic_X3DHState_X3DH_NOT_STARTED;
             }
             break;
         }
@@ -194,12 +206,16 @@ bool X3dhModule::handleReceivedProtobuf(const meshtastic_MeshPacket &mp, meshtas
             x3dhReply = meshtastic_X3DHMessage_init_default;
             NodeNum to = mp.from;
             meshtastic_PreKeyBundle preKeyBundle;
+            LOG_INFO("Response bundle recieved");
             if (pb_decode_from_bytes(decoded->payload.bytes, sizeof(decoded->payload.bytes), meshtastic_PreKeyBundle_fields,
                                      &preKeyBundle)) {
+                LOG_INFO("Correct payload included, checking identity key match");
                 meshtastic_NodeInfoLite *node = nodeDB->getMeshNode(preKeyBundle.node_num);
                 if (memcmp(preKeyBundle.identity_key, &node->user.public_key, 32)) {
+                    LOG_INFO("Identity key matches, checking for one-time pre keys");
                     std::vector<meshtastic_OneTimePreKey> tempKeyVector = preKeyBundle.one_time_pre_keys;
                     if (tempKeyVector.size() > 0) {
+                        LOG_INFO("Bundle contains one-time pre-key, starting generation of initial message");
                         HKDF<SHA512> hkdf;
                         uint8_t ephermalPrivKey[32] = {0};
                         uint8_t ephermalPubKey[32] = {0};
@@ -306,18 +322,29 @@ bool X3dhModule::handleReceivedProtobuf(const meshtastic_MeshPacket &mp, meshtas
                     // Reset state so we can try again
                     node->user.x3dh_state = meshtastic_X3DHState_X3DH_NOT_STARTED;
                 }
+                if (to != mp.from) {
+                    LOG_INFO("Received key bundle from external server, sending intial message directly to node");
+                    auto x3dhMessage = allocDataProtobuf(x3dhReply);
+                    x3dhMessage->pki_encrypted = true;
+                    memcpy(x3dhMessage->public_key.bytes, crypto->public_key, x3dhMessage->public_key.size);
+                    x3dhMessage->to = to;
+                    service->sendToMesh(x3dhMessage);
+                    x3dhReply = meshtastic_X3DHMessage_init_default;
+                }
             }
             clean(preKeyBundle);
             break;
         }
 
         case meshtastic_X3DHMessageType_INITIAL_MESSAGE: {
+            LOG_INFO("Initial message received, checking payload");
             x3dhReply = meshtastic_X3DHMessage_init_default;
             meshtastic_NodeInfoLite *node = nodeDB->getMeshNode(mp.from);
             meshtastic_InitialMessage initialMessage;
             memset(&initialMessage, 0, sizeof(initialMessage));
             if (pb_decode_from_bytes(decoded->payload.bytes, sizeof(decoded->payload.bytes), meshtastic_InitialMessage_fields,
                                      &initialMessage)) {
+                LOG_INFO("Correct payload for initial message, starting generation for initial secret");
                 HKDF<SHA512> hkdf;
                 uint8_t DH1[32] = {0};
                 uint8_t DH2[32] = {0};
@@ -335,21 +362,18 @@ bool X3dhModule::handleReceivedProtobuf(const meshtastic_MeshPacket &mp, meshtas
                 memcpy(KM, HASH_PADDING, 32);
                 if (!Curve25519::dh2(DH1, x3dhDB.signed_pre_key)) {
                     x3dhReply.type = meshtastic_X3DHMessageType_X3DH_ERROR;
-                    break;
                 } else {
                     memcpy(KM + 32, DH1, 32);
                     clean(DH1);
                 }
                 if (!crypto->setDHPublicKey(DH2)) {
                     x3dhReply.type = meshtastic_X3DHMessageType_X3DH_ERROR;
-                    break;
                 } else {
                     memcpy(KM + 64, DH2, 32);
                     clean(DH2);
                 }
                 if (!Curve25519::dh2(DH3, x3dhDB.signed_pre_key)) {
                     x3dhReply.type = meshtastic_X3DHMessageType_X3DH_ERROR;
-                    break;
                 } else {
                     memcpy(KM + 96, DH3, 32);
                     clean(DH3);
@@ -358,14 +382,17 @@ bool X3dhModule::handleReceivedProtobuf(const meshtastic_MeshPacket &mp, meshtas
                 getAndRegenOTPK(&initialMessage.otpk_id, &otpkPrivKey);
                 if (&otpkPrivKey == ZERO) {
                     x3dhReply.type = meshtastic_X3DHMessageType_X3DH_ERROR;
-                    break;
                 }
                 if (!Curve25519::dh2(DH4, &otpkPrivKey)) {
                     x3dhReply.type = meshtastic_X3DHMessageType_X3DH_ERROR;
-                    break;
                 } else {
                     memcpy(KM + 128, DH4, 32);
                     clean(DH4);
+                }
+                if (x3dhReply.type == meshtastic_X3DHMessageType_X3DH_ERROR) {
+                    LOG_WARN("Error in generating input for key derivation, aborting X3DH-agreement");
+                    node->user.x3dh_state = meshtastic_X3DHState_X3DH_NOT_STARTED;
+                    break;
                 }
                 hkdf.setKey(KM, sizeof(KM));
                 hkdf.extract(SK, 32, x3dhHkdfInfo, sizeof(x3dhHkdfInfo));
@@ -404,7 +431,7 @@ bool X3dhModule::handleReceivedProtobuf(const meshtastic_MeshPacket &mp, meshtas
 
         case meshtastic_X3DHMessageType_PROTOCOL_SWITCH: {
             meshtastic_NodeInfoLite *node = nodeDB->getMeshNode(mp.from);
-            if (node->user.x3dh_state == meshtastic_X3DHState_INIT_SENT && node->user.has_x3dh_shared_key) {
+            if (node->user.x3dh_state == meshtastic_X3DHState_INIT_SENT) {
                 LOG_INFO("Confirmed usage of X3DH-Secret for future direct messages with node %s", mp.from);
                 node->bitfield |= NODEINFO_BITFIELD_USES_X3DH_MASK;
                 node->user.x3dh_state = meshtastic_X3DHState_PROTOCOL_SET;
@@ -418,6 +445,7 @@ bool X3dhModule::handleReceivedProtobuf(const meshtastic_MeshPacket &mp, meshtas
 
         case meshtastic_X3DHMessageType_X3DH_ERROR: {
             meshtastic_NodeInfoLite *node = nodeDB->getMeshNode(mp.from);
+            LOG_WARN("Received X3DH error from node %0x", mp.from);
             if ((node->bitfield & NODEINFO_BITFIELD_USES_X3DH_MASK) &&
                 node->user.x3dh_state == meshtastic_X3DHState_PROTOCOL_SET) {
                 LOG_WARN("Possible X3DH-Downgrade-Attack or misguided packet. X3DH-State won't be reset");
@@ -429,7 +457,7 @@ bool X3dhModule::handleReceivedProtobuf(const meshtastic_MeshPacket &mp, meshtas
                 if (pb_decode_from_bytes(decoded->payload.bytes, sizeof(decoded->payload.bytes), meshtastic_RequestBundle_fields,
                                          &bundle)) {
                     meshtastic_NodeInfoLite *node = nodeDB->getMeshNode(bundle.node_num);
-                    LOG_WARN("Retrieval of pre-key-bundle of node %s failed, aborting X3DH-Handshake", bundle.node_num);
+                    LOG_WARN("Retrieval of pre-key-bundle of node %0x failed, aborting X3DH-Handshake", bundle.node_num);
                     node->user.has_x3dh_state = meshtastic_X3DHState_X3DH_NOT_STARTED;
                     meshtastic_X3DHMessage init = meshtastic_X3DHMessage_init_default;
                     init.type = meshtastic_X3DHMessageType_X3DH_ERROR;
@@ -454,11 +482,15 @@ bool X3dhModule::handleReceivedProtobuf(const meshtastic_MeshPacket &mp, meshtas
 
 meshtastic_MeshPacket *X3dhModule::allocReply()
 {
-    auto x3dhMessage = allocDataProtobuf(x3dhReply);
-    x3dhMessage->decoded.portnum = ourPortNum;
-    memcpy(x3dhMessage->public_key.bytes, crypto->public_key, x3dhMessage->public_key.size);
-    x3dhMessage->pki_encrypted = true;
-    return x3dhMessage;
+    if (x3dhReply.type != meshtastic_X3DHMessageType_NOT_SET) {
+        auto x3dhMessage = allocDataProtobuf(x3dhReply);
+        x3dhMessage->decoded.portnum = ourPortNum;
+        memcpy(x3dhMessage->public_key.bytes, crypto->public_key, x3dhMessage->public_key.size);
+        x3dhMessage->pki_encrypted = true;
+        return x3dhMessage;
+    } else {
+        return NULL;
+    }
 }
 
 void X3dhModule::loadX3dhDb()

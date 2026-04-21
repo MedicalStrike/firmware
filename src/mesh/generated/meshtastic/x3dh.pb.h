@@ -11,10 +11,12 @@
 
 /* Enum definitions */
 typedef enum _meshtastic_X3DHMessageType {
+    /* Init type for checks */
+    meshtastic_X3DHMessageType_NOT_SET = 0,
     /* Request pre-key bundle form client or server */
-    meshtastic_X3DHMessageType_REQUEST_BUNDLE = 0,
+    meshtastic_X3DHMessageType_REQUEST_BUNDLE = 1,
     /* Answer with pre-key bundle */
-    meshtastic_X3DHMessageType_RESPONSE_BUNDLE = 1,
+    meshtastic_X3DHMessageType_RESPONSE_BUNDLE = 2,
     /* Answer with device id holding client pre-key bundles */
     meshtastic_X3DHMessageType_EXTERNAL_BUNDLE = 3,
     /* Initial message containing shared secrets */
@@ -73,7 +75,7 @@ extern "C" {
 #endif
 
 /* Helper constants for enums */
-#define _meshtastic_X3DHMessageType_MIN meshtastic_X3DHMessageType_REQUEST_BUNDLE
+#define _meshtastic_X3DHMessageType_MIN meshtastic_X3DHMessageType_NOT_SET
 #define _meshtastic_X3DHMessageType_MAX meshtastic_X3DHMessageType_X3DH_ERROR
 #define _meshtastic_X3DHMessageType_ARRAYSIZE ((meshtastic_X3DHMessageType)(meshtastic_X3DHMessageType_X3DH_ERROR+1))
 
