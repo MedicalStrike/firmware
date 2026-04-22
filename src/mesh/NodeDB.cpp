@@ -20,7 +20,7 @@
 #include "error.h"
 #include "main.h"
 #include "mesh-pb-constants.h"
-#include "mesh/generated/meshtastic/x3dh_payload.pb.h" // To include protobuf-struct-definition with another std::vector
+#include "mesh/generated/meshtastic/x3dh.pb.h" // To include protobuf-struct-definition with another std::vector
 #include "meshUtils.h"
 #include "modules/NeighborInfoModule.h"
 #include <ErriezCRC32.h>
@@ -1138,7 +1138,7 @@ LoadFileResult NodeDB::loadProto(const char *filename, size_t protoSize, size_t 
     if (f) {
         LOG_INFO("Load %s", filename);
         pb_istream_t stream = {&readcb, &f, protoSize};
-        if (fields != &meshtastic_NodeDatabase_msg || fields != &meshtastic_PreKeyBundle_msg) // contains a vector object
+        if (fields != &meshtastic_NodeDatabase_msg || fields != &meshtastic_PreKeyStorage_msg) // contains a vector object
             memset(dest_struct, 0, objSize);
         if (!pb_decode(&stream, fields, dest_struct)) {
             LOG_ERROR("Error: can't decode protobuf %s", PB_GET_ERROR(&stream));

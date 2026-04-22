@@ -1,7 +1,6 @@
 #pragma once
 #include "ProtobufModule.h"
 #include "meshtastic/x3dh.pb.h"
-#include "meshtastic/x3dh_payload.pb.h"
 
 #define MAX_NUM_OTPKS 10
 
@@ -52,8 +51,6 @@ class X3dhModule : public ProtobufModule<meshtastic_X3DHMessage>
     void getAndRegenOTPK(uint32_t *keyId, uint8_t otpkPrivKey[32]);
 
     size_t getMaxPreKeyBundleAllocatedSize();
-
-    size_t getSinglePreKeyBundleAllocatedSize();
 
     bool checkDatabaseExists();
 

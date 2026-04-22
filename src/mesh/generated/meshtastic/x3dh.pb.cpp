@@ -6,7 +6,13 @@
 #error Regenerate this file with the current version of nanopb generator.
 #endif
 
-PB_BIND(meshtastic_X3DHMessage, meshtastic_X3DHMessage, AUTO)
+PB_BIND(meshtastic_OneTimePreKey, meshtastic_OneTimePreKey, AUTO)
+
+
+PB_BIND(meshtastic_X3DHMessage, meshtastic_X3DHMessage, 2)
+
+
+PB_BIND(meshtastic_PreKeyStorage, meshtastic_PreKeyStorage, AUTO)
 
 
 

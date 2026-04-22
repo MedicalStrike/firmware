@@ -4,6 +4,7 @@
 #ifndef PB_MESHTASTIC_MESHTASTIC_X3DH_PB_H_INCLUDED
 #define PB_MESHTASTIC_MESHTASTIC_X3DH_PB_H_INCLUDED
 #include <pb.h>
+#include <vector>
 
 #if PB_PROTO_HEADER_VERSION != 40
 #error Regenerate this file with the current version of nanopb generator.
@@ -60,14 +61,64 @@ typedef enum _meshtastic_X3DHState { /* X3DH-Agreement has not benn started */
 } meshtastic_X3DHState;
 
 /* Struct definitions */
-typedef PB_BYTES_ARRAY_T(210) meshtastic_X3DHMessage_payload_t;
+typedef struct _meshtastic_OneTimePreKey {
+    /* Random, unique key-ID allowing matching of private and public key */
+    uint32_t id;
+    /* Id of node this key was sent to */
+    bool has_node_num;
+    uint32_t node_num;
+    /* 32-byte Ecliptic (X25519) key
+ Public for device-to-device communication, private for on-device-storage */
+    pb_byte_t key[32];
+} meshtastic_OneTimePreKey;
+
+typedef PB_BYTES_ARRAY_T(180) meshtastic_X3DHMessage_initial_cyphertext_t;
 typedef struct _meshtastic_X3DHMessage {
     meshtastic_X3DHMessageType type;
+    bool has_continue_protocol;
     meshtastic_X3DHProtocol continue_protocol;
-    /* Contains one of the payloads specified by x3dh_payload.pb */
-    bool has_payload;
-    meshtastic_X3DHMessage_payload_t payload;
+    /* Number of the external node holding the key bundle */
+    bool has_node_num;
+    uint32_t node_num;
+    /* Matching public key to the node number */
+    bool has_identity_key;
+    pb_byte_t identity_key[32];
+    /* 32-byte Ecliptic (X25519) key, rotated occasionally */
+    bool has_signed_pre_key;
+    pb_byte_t signed_pre_key[32];
+    /* 64 byte signature of the pre-key, signed by the identity key */
+    bool has_pre_key_signature;
+    pb_byte_t pre_key_signature[64];
+    /* One Ecliptic (X25519) key, only used once */
+    bool has_one_time_pre_key;
+    meshtastic_OneTimePreKey one_time_pre_key;
+    /* Public, ephermal key used by the sending node for this X3DH */
+    bool has_ephermal_key;
+    pb_byte_t ephermal_key[32];
+    /* Unique id of the used one-time pre key, so the receiving node can use the correct matching private one */
+    bool has_otpk_id;
+    uint32_t otpk_id;
+    /* Initial cyphertext containing e.g. further secrets for future protocol usage */
+    bool has_initial_cyphertext;
+    meshtastic_X3DHMessage_initial_cyphertext_t initial_cyphertext;
+    /* Multiple one-time pre-keys, amount only limited by the available size per mesh packet */
+    pb_size_t one_time_pre_keys_count;
+    meshtastic_OneTimePreKey one_time_pre_keys[4];
 } meshtastic_X3DHMessage;
+
+typedef struct _meshtastic_PreKeyStorage {
+    /* NodeNum of pre-key-bundle for further correct handeling */
+    bool has_node_num;
+    uint32_t node_num;
+    /* 32-byte XEdDSA key, used for creating the pre-key signature */
+    pb_byte_t identity_key[32];
+    /* 32-byte Ecliptic (X25519) key, rotated occasionally */
+    pb_byte_t signed_pre_key[32];
+    /* 64 byte signature of the pre-key, signed by the identity key */
+    pb_byte_t pre_key_signature[64];
+    /* One or multiple Ecliptic (X25519) keys, only used once */
+    std::vector<meshtastic_OneTimePreKey> one_time_pre_keys;
+} meshtastic_PreKeyStorage;
 
 
 #ifdef __cplusplus
@@ -87,35 +138,91 @@ extern "C" {
 #define _meshtastic_X3DHState_MAX meshtastic_X3DHState_PROTOCOL_SET
 #define _meshtastic_X3DHState_ARRAYSIZE ((meshtastic_X3DHState)(meshtastic_X3DHState_PROTOCOL_SET+1))
 
+
 #define meshtastic_X3DHMessage_type_ENUMTYPE meshtastic_X3DHMessageType
 #define meshtastic_X3DHMessage_continue_protocol_ENUMTYPE meshtastic_X3DHProtocol
 
 
+
 /* Initializer values for message structs */
-#define meshtastic_X3DHMessage_init_default      {_meshtastic_X3DHMessageType_MIN, _meshtastic_X3DHProtocol_MIN, false, {0, {0}}}
-#define meshtastic_X3DHMessage_init_zero         {_meshtastic_X3DHMessageType_MIN, _meshtastic_X3DHProtocol_MIN, false, {0, {0}}}
+#define meshtastic_OneTimePreKey_init_default    {0, false, 0, {0}}
+#define meshtastic_X3DHMessage_init_default      {_meshtastic_X3DHMessageType_MIN, false, _meshtastic_X3DHProtocol_MIN, false, 0, false, {0}, false, {0}, false, {0}, false, meshtastic_OneTimePreKey_init_default, false, {0}, false, 0, false, {0, {0}}, 0, {meshtastic_OneTimePreKey_init_default, meshtastic_OneTimePreKey_init_default, meshtastic_OneTimePreKey_init_default, meshtastic_OneTimePreKey_init_default}}
+#define meshtastic_PreKeyStorage_init_default    {false, 0, {0}, {0}, {0}, {0}}
+#define meshtastic_OneTimePreKey_init_zero       {0, false, 0, {0}}
+#define meshtastic_X3DHMessage_init_zero         {_meshtastic_X3DHMessageType_MIN, false, _meshtastic_X3DHProtocol_MIN, false, 0, false, {0}, false, {0}, false, {0}, false, meshtastic_OneTimePreKey_init_zero, false, {0}, false, 0, false, {0, {0}}, 0, {meshtastic_OneTimePreKey_init_zero, meshtastic_OneTimePreKey_init_zero, meshtastic_OneTimePreKey_init_zero, meshtastic_OneTimePreKey_init_zero}}
+#define meshtastic_PreKeyStorage_init_zero       {false, 0, {0}, {0}, {0}, {0}}
 
 /* Field tags (for use in manual encoding/decoding) */
+#define meshtastic_OneTimePreKey_id_tag          1
+#define meshtastic_OneTimePreKey_node_num_tag    2
+#define meshtastic_OneTimePreKey_key_tag         3
 #define meshtastic_X3DHMessage_type_tag          1
 #define meshtastic_X3DHMessage_continue_protocol_tag 2
-#define meshtastic_X3DHMessage_payload_tag       3
+#define meshtastic_X3DHMessage_node_num_tag      3
+#define meshtastic_X3DHMessage_identity_key_tag  4
+#define meshtastic_X3DHMessage_signed_pre_key_tag 5
+#define meshtastic_X3DHMessage_pre_key_signature_tag 6
+#define meshtastic_X3DHMessage_one_time_pre_key_tag 7
+#define meshtastic_X3DHMessage_ephermal_key_tag  8
+#define meshtastic_X3DHMessage_otpk_id_tag       9
+#define meshtastic_X3DHMessage_initial_cyphertext_tag 10
+#define meshtastic_X3DHMessage_one_time_pre_keys_tag 11
+#define meshtastic_PreKeyStorage_node_num_tag    1
+#define meshtastic_PreKeyStorage_identity_key_tag 2
+#define meshtastic_PreKeyStorage_signed_pre_key_tag 3
+#define meshtastic_PreKeyStorage_pre_key_signature_tag 4
+#define meshtastic_PreKeyStorage_one_time_pre_keys_tag 5
 
 /* Struct field encoding specification for nanopb */
+#define meshtastic_OneTimePreKey_FIELDLIST(X, a) \
+X(a, STATIC,   SINGULAR, UINT32,   id,                1) \
+X(a, STATIC,   OPTIONAL, UINT32,   node_num,          2) \
+X(a, STATIC,   SINGULAR, FIXED_LENGTH_BYTES, key,               3)
+#define meshtastic_OneTimePreKey_CALLBACK NULL
+#define meshtastic_OneTimePreKey_DEFAULT NULL
+
 #define meshtastic_X3DHMessage_FIELDLIST(X, a) \
 X(a, STATIC,   SINGULAR, UENUM,    type,              1) \
-X(a, STATIC,   SINGULAR, UENUM,    continue_protocol,   2) \
-X(a, STATIC,   OPTIONAL, BYTES,    payload,           3)
+X(a, STATIC,   OPTIONAL, UENUM,    continue_protocol,   2) \
+X(a, STATIC,   OPTIONAL, UINT32,   node_num,          3) \
+X(a, STATIC,   OPTIONAL, FIXED_LENGTH_BYTES, identity_key,      4) \
+X(a, STATIC,   OPTIONAL, FIXED_LENGTH_BYTES, signed_pre_key,    5) \
+X(a, STATIC,   OPTIONAL, FIXED_LENGTH_BYTES, pre_key_signature,   6) \
+X(a, STATIC,   OPTIONAL, MESSAGE,  one_time_pre_key,   7) \
+X(a, STATIC,   OPTIONAL, FIXED_LENGTH_BYTES, ephermal_key,      8) \
+X(a, STATIC,   OPTIONAL, UINT32,   otpk_id,           9) \
+X(a, STATIC,   OPTIONAL, BYTES,    initial_cyphertext,  10) \
+X(a, STATIC,   REPEATED, MESSAGE,  one_time_pre_keys,  11)
 #define meshtastic_X3DHMessage_CALLBACK NULL
 #define meshtastic_X3DHMessage_DEFAULT NULL
+#define meshtastic_X3DHMessage_one_time_pre_key_MSGTYPE meshtastic_OneTimePreKey
+#define meshtastic_X3DHMessage_one_time_pre_keys_MSGTYPE meshtastic_OneTimePreKey
 
+#define meshtastic_PreKeyStorage_FIELDLIST(X, a) \
+X(a, STATIC,   OPTIONAL, UINT32,   node_num,          1) \
+X(a, STATIC,   SINGULAR, FIXED_LENGTH_BYTES, identity_key,      2) \
+X(a, STATIC,   SINGULAR, FIXED_LENGTH_BYTES, signed_pre_key,    3) \
+X(a, STATIC,   SINGULAR, FIXED_LENGTH_BYTES, pre_key_signature,   4) \
+X(a, CALLBACK, REPEATED, MESSAGE,  one_time_pre_keys,   5)
+extern bool meshtastic_PreKeyStorage_callback(pb_istream_t *istream, pb_ostream_t *ostream, const pb_field_t *field);
+#define meshtastic_PreKeyStorage_CALLBACK meshtastic_PreKeyStorage_callback
+#define meshtastic_PreKeyStorage_DEFAULT NULL
+#define meshtastic_PreKeyStorage_one_time_pre_keys_MSGTYPE meshtastic_OneTimePreKey
+
+extern const pb_msgdesc_t meshtastic_OneTimePreKey_msg;
 extern const pb_msgdesc_t meshtastic_X3DHMessage_msg;
+extern const pb_msgdesc_t meshtastic_PreKeyStorage_msg;
 
 /* Defines for backwards compatibility with code written before nanopb-0.4.0 */
+#define meshtastic_OneTimePreKey_fields &meshtastic_OneTimePreKey_msg
 #define meshtastic_X3DHMessage_fields &meshtastic_X3DHMessage_msg
+#define meshtastic_PreKeyStorage_fields &meshtastic_PreKeyStorage_msg
 
 /* Maximum encoded size of messages (where known) */
+/* meshtastic_PreKeyStorage_size depends on runtime parameters */
 #define MESHTASTIC_MESHTASTIC_X3DH_PB_H_MAX_SIZE meshtastic_X3DHMessage_size
-#define meshtastic_X3DHMessage_size              217
+#define meshtastic_OneTimePreKey_size            46
+#define meshtastic_X3DHMessage_size              607
 
 #ifdef __cplusplus
 } /* extern "C" */
