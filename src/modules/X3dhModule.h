@@ -1,10 +1,12 @@
 #pragma once
 #include "ProtobufModule.h"
 #include "meshtastic/x3dh.pb.h"
+#include <random>
 
 #define MAX_NUM_OTPKS 10
 
 static constexpr const char *x3dhDatabaseFilename = "/prefs/X3DH_DB.proto";
+static constexpr const char *x3dhNodeStateDatabaseFilename = "/prefs/X3DH_NodeStateDB.proto";
 
 static const char *x3dhHkdfInfo = "Meshtastic X3DH";
 
@@ -28,6 +30,11 @@ class X3dhModule : public ProtobufModule<meshtastic_X3DHMessage>
         } else {
             initX3dhDb();
         }
+        if (checkStateDatabaseExists()) {
+            loadX3dhStateDB();
+        } else {
+            initX3dhNodeStateDb();
+        }
     }
 
   protected:
@@ -44,17 +51,29 @@ class X3dhModule : public ProtobufModule<meshtastic_X3DHMessage>
   private:
     void loadX3dhDb();
 
+    void loadX3dhStateDB();
+
     void initX3dhDb();
 
-    void genOTPK(uint32_t otpkId, uint8_t privKey[32]);
+    void initX3dhNodeStateDb();
+
+    void genOTPK(meshtastic_OneTimePreKey *otpk);
 
     void getAndRegenOTPK(uint32_t *keyId, uint8_t otpkPrivKey[32]);
 
     size_t getMaxPreKeyBundleAllocatedSize();
 
+    size_t getMaxStateDbAllocatedSize();
+
     bool checkDatabaseExists();
 
+    bool checkStateDatabaseExists();
+
     bool saveX3dhDatabaseToDisk();
+
+    bool saveX3dhNodeStateDatabaseToDisk();
+
+    meshtastic_X3DHNodeInfo *getOrCreateNodeStateEntry(NodeNum num);
 
     meshtastic_X3DHMessage x3dhReply;
 };

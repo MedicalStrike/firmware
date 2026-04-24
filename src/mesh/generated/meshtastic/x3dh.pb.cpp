@@ -12,7 +12,13 @@ PB_BIND(meshtastic_OneTimePreKey, meshtastic_OneTimePreKey, AUTO)
 PB_BIND(meshtastic_X3DHMessage, meshtastic_X3DHMessage, 2)
 
 
+PB_BIND(meshtastic_X3DHNodeInfo, meshtastic_X3DHNodeInfo, AUTO)
+
+
 PB_BIND(meshtastic_PreKeyStorage, meshtastic_PreKeyStorage, AUTO)
+
+
+PB_BIND(meshtastic_X3DHStateDB, meshtastic_X3DHStateDB, AUTO)
 
 
 

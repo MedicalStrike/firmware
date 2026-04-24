@@ -106,6 +106,13 @@ typedef struct _meshtastic_X3DHMessage {
     meshtastic_OneTimePreKey one_time_pre_keys[4];
 } meshtastic_X3DHMessage;
 
+typedef struct _meshtastic_X3DHNodeInfo {
+    uint32_t node_num;
+    meshtastic_X3DHState x3dh_state;
+    bool has_x3dh_shared_key;
+    pb_byte_t x3dh_shared_key[32];
+} meshtastic_X3DHNodeInfo;
+
 typedef struct _meshtastic_PreKeyStorage {
     /* NodeNum of pre-key-bundle for further correct handeling */
     bool has_node_num;
@@ -119,6 +126,11 @@ typedef struct _meshtastic_PreKeyStorage {
     /* One or multiple Ecliptic (X25519) keys, only used once */
     std::vector<meshtastic_OneTimePreKey> one_time_pre_keys;
 } meshtastic_PreKeyStorage;
+
+typedef struct _meshtastic_X3DHStateDB {
+    uint32_t node_count;
+    std::vector<meshtastic_X3DHNodeInfo> node_info;
+} meshtastic_X3DHStateDB;
 
 
 #ifdef __cplusplus
@@ -142,15 +154,22 @@ extern "C" {
 #define meshtastic_X3DHMessage_type_ENUMTYPE meshtastic_X3DHMessageType
 #define meshtastic_X3DHMessage_continue_protocol_ENUMTYPE meshtastic_X3DHProtocol
 
+#define meshtastic_X3DHNodeInfo_x3dh_state_ENUMTYPE meshtastic_X3DHState
+
+
 
 
 /* Initializer values for message structs */
 #define meshtastic_OneTimePreKey_init_default    {0, false, 0, {0}}
 #define meshtastic_X3DHMessage_init_default      {_meshtastic_X3DHMessageType_MIN, false, _meshtastic_X3DHProtocol_MIN, false, 0, false, {0}, false, {0}, false, {0}, false, meshtastic_OneTimePreKey_init_default, false, {0}, false, 0, false, {0, {0}}, 0, {meshtastic_OneTimePreKey_init_default, meshtastic_OneTimePreKey_init_default, meshtastic_OneTimePreKey_init_default, meshtastic_OneTimePreKey_init_default}}
+#define meshtastic_X3DHNodeInfo_init_default     {0, _meshtastic_X3DHState_MIN, false, {0}}
 #define meshtastic_PreKeyStorage_init_default    {false, 0, {0}, {0}, {0}, {0}}
+#define meshtastic_X3DHStateDB_init_default      {0, {0}}
 #define meshtastic_OneTimePreKey_init_zero       {0, false, 0, {0}}
 #define meshtastic_X3DHMessage_init_zero         {_meshtastic_X3DHMessageType_MIN, false, _meshtastic_X3DHProtocol_MIN, false, 0, false, {0}, false, {0}, false, {0}, false, meshtastic_OneTimePreKey_init_zero, false, {0}, false, 0, false, {0, {0}}, 0, {meshtastic_OneTimePreKey_init_zero, meshtastic_OneTimePreKey_init_zero, meshtastic_OneTimePreKey_init_zero, meshtastic_OneTimePreKey_init_zero}}
+#define meshtastic_X3DHNodeInfo_init_zero        {0, _meshtastic_X3DHState_MIN, false, {0}}
 #define meshtastic_PreKeyStorage_init_zero       {false, 0, {0}, {0}, {0}, {0}}
+#define meshtastic_X3DHStateDB_init_zero         {0, {0}}
 
 /* Field tags (for use in manual encoding/decoding) */
 #define meshtastic_OneTimePreKey_id_tag          1
@@ -167,11 +186,16 @@ extern "C" {
 #define meshtastic_X3DHMessage_otpk_id_tag       9
 #define meshtastic_X3DHMessage_initial_cyphertext_tag 10
 #define meshtastic_X3DHMessage_one_time_pre_keys_tag 11
+#define meshtastic_X3DHNodeInfo_node_num_tag     1
+#define meshtastic_X3DHNodeInfo_x3dh_state_tag   2
+#define meshtastic_X3DHNodeInfo_x3dh_shared_key_tag 3
 #define meshtastic_PreKeyStorage_node_num_tag    1
 #define meshtastic_PreKeyStorage_identity_key_tag 2
 #define meshtastic_PreKeyStorage_signed_pre_key_tag 3
 #define meshtastic_PreKeyStorage_pre_key_signature_tag 4
 #define meshtastic_PreKeyStorage_one_time_pre_keys_tag 5
+#define meshtastic_X3DHStateDB_node_count_tag    1
+#define meshtastic_X3DHStateDB_node_info_tag     2
 
 /* Struct field encoding specification for nanopb */
 #define meshtastic_OneTimePreKey_FIELDLIST(X, a) \
@@ -198,6 +222,13 @@ X(a, STATIC,   REPEATED, MESSAGE,  one_time_pre_keys,  11)
 #define meshtastic_X3DHMessage_one_time_pre_key_MSGTYPE meshtastic_OneTimePreKey
 #define meshtastic_X3DHMessage_one_time_pre_keys_MSGTYPE meshtastic_OneTimePreKey
 
+#define meshtastic_X3DHNodeInfo_FIELDLIST(X, a) \
+X(a, STATIC,   SINGULAR, UINT32,   node_num,          1) \
+X(a, STATIC,   SINGULAR, UENUM,    x3dh_state,        2) \
+X(a, STATIC,   OPTIONAL, FIXED_LENGTH_BYTES, x3dh_shared_key,   3)
+#define meshtastic_X3DHNodeInfo_CALLBACK NULL
+#define meshtastic_X3DHNodeInfo_DEFAULT NULL
+
 #define meshtastic_PreKeyStorage_FIELDLIST(X, a) \
 X(a, STATIC,   OPTIONAL, UINT32,   node_num,          1) \
 X(a, STATIC,   SINGULAR, FIXED_LENGTH_BYTES, identity_key,      2) \
@@ -209,20 +240,34 @@ extern bool meshtastic_PreKeyStorage_callback(pb_istream_t *istream, pb_ostream_
 #define meshtastic_PreKeyStorage_DEFAULT NULL
 #define meshtastic_PreKeyStorage_one_time_pre_keys_MSGTYPE meshtastic_OneTimePreKey
 
+#define meshtastic_X3DHStateDB_FIELDLIST(X, a) \
+X(a, STATIC,   SINGULAR, UINT32,   node_count,        1) \
+X(a, CALLBACK, REPEATED, MESSAGE,  node_info,         2)
+extern bool meshtastic_X3DHStateDB_callback(pb_istream_t *istream, pb_ostream_t *ostream, const pb_field_t *field);
+#define meshtastic_X3DHStateDB_CALLBACK meshtastic_X3DHStateDB_callback
+#define meshtastic_X3DHStateDB_DEFAULT NULL
+#define meshtastic_X3DHStateDB_node_info_MSGTYPE meshtastic_X3DHNodeInfo
+
 extern const pb_msgdesc_t meshtastic_OneTimePreKey_msg;
 extern const pb_msgdesc_t meshtastic_X3DHMessage_msg;
+extern const pb_msgdesc_t meshtastic_X3DHNodeInfo_msg;
 extern const pb_msgdesc_t meshtastic_PreKeyStorage_msg;
+extern const pb_msgdesc_t meshtastic_X3DHStateDB_msg;
 
 /* Defines for backwards compatibility with code written before nanopb-0.4.0 */
 #define meshtastic_OneTimePreKey_fields &meshtastic_OneTimePreKey_msg
 #define meshtastic_X3DHMessage_fields &meshtastic_X3DHMessage_msg
+#define meshtastic_X3DHNodeInfo_fields &meshtastic_X3DHNodeInfo_msg
 #define meshtastic_PreKeyStorage_fields &meshtastic_PreKeyStorage_msg
+#define meshtastic_X3DHStateDB_fields &meshtastic_X3DHStateDB_msg
 
 /* Maximum encoded size of messages (where known) */
 /* meshtastic_PreKeyStorage_size depends on runtime parameters */
+/* meshtastic_X3DHStateDB_size depends on runtime parameters */
 #define MESHTASTIC_MESHTASTIC_X3DH_PB_H_MAX_SIZE meshtastic_X3DHMessage_size
 #define meshtastic_OneTimePreKey_size            46
 #define meshtastic_X3DHMessage_size              607
+#define meshtastic_X3DHNodeInfo_size             42
 
 #ifdef __cplusplus
 } /* extern "C" */
