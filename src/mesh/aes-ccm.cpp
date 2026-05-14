@@ -10,6 +10,10 @@
 #include "aes-ccm.h"
 #if !MESHTASTIC_EXCLUDE_PKI
 
+static const uint64_t AAD_MAX_TWO = 65280;
+static const uint64_t AAD_MAX_SIX = 0xFFFFFFFF;
+static const uint64_t AAD_MAX_LENGTH = 0xFFFFFFFFFFFFFFFF;
+
 /**
  * Constant-time comparison of two byte arrays
  *
@@ -51,7 +55,22 @@ static void xor_aes_block(uint8_t *dst, const uint8_t *src)
 static void aes_ccm_auth_start(size_t M, size_t L, const uint8_t *nonce, const uint8_t *aad, size_t aad_len, size_t plain_len,
                                uint8_t *x)
 {
-    uint8_t aad_buf[2 * AES_BLOCK_SIZE];
+    /* Calculate size encoding octets for AAD*/
+    int aad_size_octet_len;
+    if (aad_len < AAD_MAX_TWO) {
+        aad_size_octet_len = 2;
+    } else if (aad_len <= AAD_MAX_SIX) {
+        aad_size_octet_len = 6;
+    } else { /* No further size check needed, aad_len will never be > 2^64 */
+        aad_size_octet_len = 10;
+    }
+    int aad_block_amount = 0;
+    if ((aad_size_octet_len + aad_len) % AES_BLOCK_SIZE) {
+        aad_block_amount = ((aad_size_octet_len + aad_len) / AES_BLOCK_SIZE) + 1;
+    } else {
+        aad_block_amount = (aad_size_octet_len + aad_len) / AES_BLOCK_SIZE;
+    }
+    uint8_t aad_buf[aad_block_amount * AES_BLOCK_SIZE];
     uint8_t b[AES_BLOCK_SIZE];
     /* Authentication */
     /* B_0: Flags | Nonce N | l(m) */
@@ -63,15 +82,37 @@ static void aes_ccm_auth_start(size_t M, size_t L, const uint8_t *nonce, const u
     crypto->aesEncrypt(b, x); /* X_1 = E(K, B_0) */
     if (!aad_len)
         return;
-    WPA_PUT_BE16(aad_buf, aad_len);
-    memcpy(aad_buf + 2, aad, aad_len);
-    memset(aad_buf + 2 + aad_len, 0, sizeof(aad_buf) - 2 - aad_len);
+    switch (aad_size_octet_len) {
+    case 2:
+        WPA_PUT_BE16(aad_buf, aad_len);
+        memcpy(aad_buf + 2, aad, aad_len);
+        memset(aad_buf + 2 + aad_len, 0, sizeof(aad_buf) - 2 - aad_len);
+        break;
+    case 6:
+        WPA_PUT_BE16(aad_buf, 0xFF);
+        WPA_PUT_BE16(aad_buf + 2, 0xFE);
+        WPA_PUT_BE16(aad_buf + 4, aad_len);
+        memcpy(aad_buf + 6, aad, aad_len);
+        memset(aad_buf + 6 + aad_len, 0, sizeof(aad_buf) - 6 - aad_len);
+        break;
+    case 10:
+        WPA_PUT_BE16(aad_buf, 0xFF);
+        WPA_PUT_BE16(aad_buf + 2, 0xFF);
+        WPA_PUT_BE16(aad_buf + 4, aad_len);
+        memcpy(aad_buf + 10, aad, aad_len);
+        memset(aad_buf + 10 + aad_len, 0, sizeof(aad_buf) - 10 - aad_len);
+        break;
+    default:
+        break;
+    }
     xor_aes_block(aad_buf, x);
     crypto->aesEncrypt(aad_buf, x); /* X_2 = E(K, X_1 XOR B_1) */
-    if (aad_len > AES_BLOCK_SIZE - 2) {
-        xor_aes_block(&aad_buf[AES_BLOCK_SIZE], x);
-        /* X_3 = E(K, X_2 XOR B_2) */
-        crypto->aesEncrypt(&aad_buf[AES_BLOCK_SIZE], x);
+    if (aad_block_amount > 1) {
+        for (int aad_block_position = 1; aad_block_position <= aad_block_amount; aad_block_position++) {
+            xor_aes_block(&aad_buf[AES_BLOCK_SIZE * aad_block_position], x);
+            /* X_i+1 = E(K, X_i+1 XOR B_i+1) */
+            crypto->aesEncrypt(&aad_buf[AES_BLOCK_SIZE * aad_block_position], x);
+        }
     }
 }
 static void aes_ccm_auth(const uint8_t *data, size_t len, uint8_t *x)
@@ -138,14 +179,15 @@ static void aes_ccm_decr_auth(size_t M, uint8_t *a, const uint8_t *auth, uint8_t
     for (i = 0; i < M; i++)
         t[i] = auth[i] ^ tmp[i];
 }
-/* AES-CCM with fixed L=2 and aad_len <= 30 assumption */
+/* AES-CCM with fixed L=2 assumption */
 int aes_ccm_ae(const uint8_t *key, size_t key_len, const uint8_t *nonce, size_t M, const uint8_t *plain, size_t plain_len,
                const uint8_t *aad, size_t aad_len, uint8_t *crypt, uint8_t *auth)
 {
     const size_t L = 2;
     uint8_t x[AES_BLOCK_SIZE], a[AES_BLOCK_SIZE];
-    if (aad_len > 30 || M > AES_BLOCK_SIZE)
-        return -1;
+    if (aad_len > AAD_MAX_LENGTH || M > AES_BLOCK_SIZE) /* Maybe the aad_len check isn't neccessary, since any value above
+                                                           AAD_MAX_LENGTH should result in an integer obverflow*/
+        return false;
     crypto->aesSetKey(key, key_len);
     aes_ccm_auth_start(M, L, nonce, aad, aad_len, plain_len, x);
     aes_ccm_auth(plain, plain_len, x);
@@ -155,14 +197,15 @@ int aes_ccm_ae(const uint8_t *key, size_t key_len, const uint8_t *nonce, size_t 
     aes_ccm_encr_auth(M, x, a, auth);
     return 0;
 }
-/* AES-CCM with fixed L=2 and aad_len <= 30 assumption */
+/* AES-CCM with fixed L=2 assumption */
 bool aes_ccm_ad(const uint8_t *key, size_t key_len, const uint8_t *nonce, size_t M, const uint8_t *crypt, size_t crypt_len,
                 const uint8_t *aad, size_t aad_len, const uint8_t *auth, uint8_t *plain)
 {
     const size_t L = 2;
     uint8_t x[AES_BLOCK_SIZE], a[AES_BLOCK_SIZE];
     uint8_t t[AES_BLOCK_SIZE];
-    if (aad_len > 30 || M > AES_BLOCK_SIZE)
+    if (aad_len > AAD_MAX_LENGTH || M > AES_BLOCK_SIZE) /* Maybe the aad_len check isn't neccessary, since any value above
+                                                           AAD_MAX_LENGTH should result in an integer obverflow*/
         return false;
     crypto->aesSetKey(key, key_len);
     /* Decryption */

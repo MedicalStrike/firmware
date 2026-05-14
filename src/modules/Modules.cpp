@@ -107,6 +107,8 @@
 #include "modules/DropzoneModule.h"
 #endif
 
+#include "modules/X3dhModule.h"
+
 /**
  * Create module instances here.  If you are adding a new module, you must 'new' it here (or somewhere else)
  */
@@ -278,6 +280,7 @@ void setupModules()
 #if defined(USE_SX1280) && !MESHTASTIC_EXCLUDE_AUDIO
     audioModule = new AudioModule();
 #endif
+    new X3dhModule();
 #if !MESHTASTIC_EXCLUDE_PAXCOUNTER
     if (moduleConfig.has_paxcounter && moduleConfig.paxcounter.enabled) {
         paxcounterModule = new PaxcounterModule();
