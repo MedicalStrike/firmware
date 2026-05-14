@@ -10,8 +10,9 @@ static constexpr const char *x3dhNodeStateDatabaseFilename = "/prefs/X3DH_NodeSt
 
 static const char *x3dhHkdfInfo = "Meshtastic X3DH";
 
-static const uint8_t ZERO[32] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                                 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+static const uint8_t ZERO_X3DH[32] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 static const uint8_t HASH_PADDING[32] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
                                          0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
                                          0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
@@ -37,6 +38,10 @@ class X3dhModule : public ProtobufModule<meshtastic_X3DHMessage>
         }
     }
 
+    void getKeyByNodeId(NodeNum num, uint8_t sharedKey[32]);
+
+    bool getKeyStateByNodeId(NodeNum num);
+
   protected:
     virtual bool wantPacket(const meshtastic_MeshPacket *p) override
     {
@@ -59,7 +64,9 @@ class X3dhModule : public ProtobufModule<meshtastic_X3DHMessage>
 
     void genOTPK(meshtastic_OneTimePreKey *otpk);
 
-    void getAndRegenOTPK(uint32_t *keyId, uint8_t otpkPrivKey[32]);
+    void getAndRegenOTPK(uint32_t keyId, uint8_t otpkPrivKey[32]);
+
+    bool performDh(uint8_t pubKey[32], uint8_t privKey[32]);
 
     size_t getMaxPreKeyBundleAllocatedSize();
 
@@ -74,6 +81,20 @@ class X3dhModule : public ProtobufModule<meshtastic_X3DHMessage>
     bool saveX3dhNodeStateDatabaseToDisk();
 
     meshtastic_X3DHNodeInfo *getOrCreateNodeStateEntry(NodeNum num);
+
+    meshtastic_X3DHNodeInfo *getNodeStateEntry(NodeNum num);
+
+    void enableOptionalFieldsRequestBundle();
+
+    void enableOptionalFieldsResponseBundle();
+
+    void enableOptionalFieldsExternalBundle();
+
+    void enableOptionalFieldsInitialMessage();
+
+    void enableOptionalFieldsProtocolSwitch();
+
+    void enableOptionalFieldsX3dhError();
 
     meshtastic_X3DHMessage x3dhReply;
 };

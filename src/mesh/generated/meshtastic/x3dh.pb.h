@@ -101,6 +101,9 @@ typedef struct _meshtastic_X3DHMessage {
     /* Initial cyphertext containing e.g. further secrets for future protocol usage */
     bool has_initial_cyphertext;
     meshtastic_X3DHMessage_initial_cyphertext_t initial_cyphertext;
+    /* Nonce for initial cyphertext */
+    bool has_nonce;
+    pb_byte_t nonce[4];
     /* Multiple one-time pre-keys, amount only limited by the available size per mesh packet */
     pb_size_t one_time_pre_keys_count;
     meshtastic_OneTimePreKey one_time_pre_keys[4];
@@ -161,12 +164,12 @@ extern "C" {
 
 /* Initializer values for message structs */
 #define meshtastic_OneTimePreKey_init_default    {0, false, 0, {0}}
-#define meshtastic_X3DHMessage_init_default      {_meshtastic_X3DHMessageType_MIN, false, _meshtastic_X3DHProtocol_MIN, false, 0, false, {0}, false, {0}, false, {0}, false, meshtastic_OneTimePreKey_init_default, false, {0}, false, 0, false, {0, {0}}, 0, {meshtastic_OneTimePreKey_init_default, meshtastic_OneTimePreKey_init_default, meshtastic_OneTimePreKey_init_default, meshtastic_OneTimePreKey_init_default}}
+#define meshtastic_X3DHMessage_init_default      {_meshtastic_X3DHMessageType_MIN, false, _meshtastic_X3DHProtocol_MIN, false, 0, false, {0}, false, {0}, false, {0}, false, meshtastic_OneTimePreKey_init_default, false, {0}, false, 0, false, {0, {0}}, false, {0}, 0, {meshtastic_OneTimePreKey_init_default, meshtastic_OneTimePreKey_init_default, meshtastic_OneTimePreKey_init_default, meshtastic_OneTimePreKey_init_default}}
 #define meshtastic_X3DHNodeInfo_init_default     {0, _meshtastic_X3DHState_MIN, false, {0}}
 #define meshtastic_PreKeyStorage_init_default    {false, 0, {0}, {0}, {0}, {0}}
 #define meshtastic_X3DHStateDB_init_default      {0, {0}}
 #define meshtastic_OneTimePreKey_init_zero       {0, false, 0, {0}}
-#define meshtastic_X3DHMessage_init_zero         {_meshtastic_X3DHMessageType_MIN, false, _meshtastic_X3DHProtocol_MIN, false, 0, false, {0}, false, {0}, false, {0}, false, meshtastic_OneTimePreKey_init_zero, false, {0}, false, 0, false, {0, {0}}, 0, {meshtastic_OneTimePreKey_init_zero, meshtastic_OneTimePreKey_init_zero, meshtastic_OneTimePreKey_init_zero, meshtastic_OneTimePreKey_init_zero}}
+#define meshtastic_X3DHMessage_init_zero         {_meshtastic_X3DHMessageType_MIN, false, _meshtastic_X3DHProtocol_MIN, false, 0, false, {0}, false, {0}, false, {0}, false, meshtastic_OneTimePreKey_init_zero, false, {0}, false, 0, false, {0, {0}}, false, {0}, 0, {meshtastic_OneTimePreKey_init_zero, meshtastic_OneTimePreKey_init_zero, meshtastic_OneTimePreKey_init_zero, meshtastic_OneTimePreKey_init_zero}}
 #define meshtastic_X3DHNodeInfo_init_zero        {0, _meshtastic_X3DHState_MIN, false, {0}}
 #define meshtastic_PreKeyStorage_init_zero       {false, 0, {0}, {0}, {0}, {0}}
 #define meshtastic_X3DHStateDB_init_zero         {0, {0}}
@@ -185,7 +188,8 @@ extern "C" {
 #define meshtastic_X3DHMessage_ephermal_key_tag  8
 #define meshtastic_X3DHMessage_otpk_id_tag       9
 #define meshtastic_X3DHMessage_initial_cyphertext_tag 10
-#define meshtastic_X3DHMessage_one_time_pre_keys_tag 11
+#define meshtastic_X3DHMessage_nonce_tag         11
+#define meshtastic_X3DHMessage_one_time_pre_keys_tag 12
 #define meshtastic_X3DHNodeInfo_node_num_tag     1
 #define meshtastic_X3DHNodeInfo_x3dh_state_tag   2
 #define meshtastic_X3DHNodeInfo_x3dh_shared_key_tag 3
@@ -216,7 +220,8 @@ X(a, STATIC,   OPTIONAL, MESSAGE,  one_time_pre_key,   7) \
 X(a, STATIC,   OPTIONAL, FIXED_LENGTH_BYTES, ephermal_key,      8) \
 X(a, STATIC,   OPTIONAL, UINT32,   otpk_id,           9) \
 X(a, STATIC,   OPTIONAL, BYTES,    initial_cyphertext,  10) \
-X(a, STATIC,   REPEATED, MESSAGE,  one_time_pre_keys,  11)
+X(a, STATIC,   OPTIONAL, FIXED_LENGTH_BYTES, nonce,            11) \
+X(a, STATIC,   REPEATED, MESSAGE,  one_time_pre_keys,  12)
 #define meshtastic_X3DHMessage_CALLBACK NULL
 #define meshtastic_X3DHMessage_DEFAULT NULL
 #define meshtastic_X3DHMessage_one_time_pre_key_MSGTYPE meshtastic_OneTimePreKey
@@ -266,7 +271,7 @@ extern const pb_msgdesc_t meshtastic_X3DHStateDB_msg;
 /* meshtastic_X3DHStateDB_size depends on runtime parameters */
 #define MESHTASTIC_MESHTASTIC_X3DH_PB_H_MAX_SIZE meshtastic_X3DHMessage_size
 #define meshtastic_OneTimePreKey_size            46
-#define meshtastic_X3DHMessage_size              607
+#define meshtastic_X3DHMessage_size              613
 #define meshtastic_X3DHNodeInfo_size             42
 
 #ifdef __cplusplus

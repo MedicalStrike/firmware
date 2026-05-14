@@ -7,6 +7,7 @@
 #include "XEdDSA.h"
 #include "aes-ccm.h"
 #include "meshUtils.h"
+#include "modules/X3dhModule.h"
 #include <Crypto.h>
 #include <Curve25519.h>
 #include <RNG.h>
@@ -146,11 +147,15 @@ bool CryptoEngine::encryptCurve25519(uint32_t toNode, uint32_t fromNode, meshtas
         return false;
     }
 
-    printBytes("Attempt encrypt with own public key: ", public_key, 32);
-    printBytes("Attempt encrypt with other node public key: ", remotePublic.bytes, 32);
-
-    if (!setDHPublicKey(remotePublic.bytes)) {
-        return false;
+    if (nodeDB->getMeshNode(toNode)->bitfield & NODEINFO_BITFIELD_USES_X3DH_MASK) {
+        x3dhModule->getKeyByNodeId(toNode, shared_key);
+    } else {
+        printBytes("Attempt encrypt with other node public key: ", remotePublic.bytes, 32);
+        printBytes("Attempt encrypt with own public key: ", public_key, 32);
+        // Calculate the shared secret with the sending node and decrypt
+        if (!setDHPublicKey(remotePublic.bytes)) {
+            return false;
+        }
     }
     hash(shared_key, 32);
     initNonce(fromNode, packetNum, extraNonceTmp);
@@ -194,11 +199,15 @@ bool CryptoEngine::decryptCurve25519(uint32_t fromNode, meshtastic_UserLite_publ
         return false;
     }
 
-    printBytes("Attempt decrypt with other node public key: ", remotePublic.bytes, 32);
-    printBytes("Attempt decrypt with own public key: ", public_key, 32);
-    // Calculate the shared secret with the sending node and decrypt
-    if (!setDHPublicKey(remotePublic.bytes)) {
-        return false;
+    if (nodeDB->getMeshNode(fromNode)->bitfield & NODEINFO_BITFIELD_USES_X3DH_MASK || x3dhModule->getKeyStateByNodeId(fromNode)) {
+        x3dhModule->getKeyByNodeId(fromNode, shared_key);
+    } else {
+        printBytes("Attempt decrypt with other node public key: ", remotePublic.bytes, 32);
+        printBytes("Attempt decrypt with own public key: ", public_key, 32);
+        // Calculate the shared secret with the sending node and decrypt
+        if (!setDHPublicKey(remotePublic.bytes)) {
+            return false;
+        }
     }
     hash(shared_key, 32);
 
